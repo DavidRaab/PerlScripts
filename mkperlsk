@@ -1,0 +1,20 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use v5.32;
+
+for my $file ( @ARGV ) {
+    next if -e $file;
+    
+    open my $fh, '>', $file or die "Cannot open file [$file]: $!\n";
+    
+    print {$fh} "#!/usr/bin/env perl\n";
+    print {$fh} "use strict;\n";
+    print {$fh} "use warnings;\n";
+    print {$fh} "use v5.32;\n";
+    print {$fh} "use Data::Dump qw(dump);\n\n";
+    
+    chmod 0770, $file;
+    
+    close $fh;
+}

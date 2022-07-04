@@ -1,0 +1,32 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use v5.32;
+use List::MoreUtils qw(any);
+use Text::Table;
+
+# List of FileSystems not to Show
+my @filtered_fs = 
+    qw/autofs configfs devpts devtmpfs securityfs tmpfs
+       efivarfs debugfs bpf cgroup2 pstore sysfs tracefs
+       fuse.gvfsd-fuse fusectl hugetlbfs mqueue/;
+
+my @out = 
+  sort {
+    $a->[0] cmp $b->[0]
+    || $a->[1] cmp $b->[1]
+  }
+  grep{
+    my $type = $_->[2];
+    not any { $type eq $_ } @filtered_fs;
+  }
+  map {
+    #       DEV          MOUNTPOINT     TYPE    OPTIONS
+    if (m/\A(.+?)\s+on\s+(.+?)\s+type\s+(.+?)\s+(.+?)\s+\z/) {
+        [ $1, $2, $3 ];
+    }
+  } qx(mount);
+
+my $table = Text::Table->new("DEV", "MOUNTPOINT", "TYPE");
+$table->load(@out);
+print $table;

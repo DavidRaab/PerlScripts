@@ -1,0 +1,107 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use v5.32;
+use File::Slurp qw(read_file);
+use Parallel::ForkManager;
+use Data::Dump qw(dump);
+
+my $audio = $ARGV[0];
+my $txt   = $ARGV[1];
+
+die "Error: Audio file [$audio] does not exists.\n" if not -e $audio;
+die "Error: Split file [$txt] does not exists.\n"   if not -e $txt;
+
+# 00:12:33 Artist - Title
+my $format1 = qr/\A \[? (\d\d:\d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
+# 00:12:33 Title
+my $format2 = qr/\A \[? (\d\d:\d\d:\d\d) \]? (?:\s+-)? \s+ (.+) \z/xms;
+
+# Read Songs File Format
+my @songs;
+my @txt = read_file($txt, chomp => 1);
+
+for my $line ( @txt ) {
+    if ( $line =~ $format1 ) {
+        push @songs, { Start => $1, Artist => $2, Title => $3 };
+    }
+    elsif ( $line =~ $format2 ) {
+        push @songs, { Start => $1, Title => $2 };
+    }
+    else {
+        die "Cannot read TXT Format\n";
+    }
+}
+
+# Read "Stop" Attribute in extra step - because easier!
+for ( my $i=1; $i < @txt; $i++ ) {
+    if ( $txt[$i] =~ $format1 ) {
+        $songs[$i-1]->{Stop} = $1;
+    }
+    elsif ( $txt[$i] =~ $format2 ) {
+        $songs[$i-1]->{Stop} = $1;
+    }
+}
+
+# Convert Audio Files
+my $pm = Parallel::ForkManager->new(4);
+SONG:
+for (my $i=0; $i < @songs; $i++ ) {
+    my $pid = $pm->start and next SONG;
+
+    # Child Process
+    my $song  = $songs[$i];
+    my $track = $i + 1;
+    
+    convert(
+        Audio  => $audio,
+        Start  => $song->{Start},
+        Stop   => $song->{Stop},
+        Track  => $track,
+        Artist => $song->{Artist},
+        Title  => $song->{Title},
+    );
+    
+    # Exit Child
+    $pm->finish;
+}
+
+print "Finished!\n";
+
+# Mandatory: Audio, Start, Track, Title
+# Optional:  Stop, Artist
+my $time_format;
+BEGIN { $time_format = qr/\A(\d\d:\d\d:\d\d)\z/xms; }
+sub convert {
+    my %arg = @_;
+    my $audio    = $arg{Audio} // die "Audio not defined!\n";
+    my ($start)  = defined $arg{Start} && $arg{Start} =~ $time_format;
+    my ($stop)   = defined $arg{Stop}  && $arg{Stop}  =~ $time_format;
+    my ($track)  = defined $arg{Track} && $arg{Track} =~ m/\A(\d+)\z/;
+    my $title    = $arg{Title} // die "Title not defined!\n";
+    
+    my $out_file = 
+        defined $arg{Artist}
+        ? sprintf("%02d. %s - %s.ogg", $track, $arg{Artist}, $arg{Title})
+        : sprintf("%02d. %s.ogg",      $track, $arg{Title});
+    
+    if ( exists $arg{Stop} && defined $arg{Stop} && $arg{Stop} =~ m/\A\d\d:\d\d:\d\d\z/ ) {
+        system(
+            'ffmpeg',
+            '-i'   => $arg{Audio},
+            '-ss'  => $arg{Start},
+            '-to'  => $arg{Stop},
+            '-q:a' => 8,
+            $out_file,
+        );
+    }
+    else {
+        system(
+            'ffmpeg',
+            '-i'   => $arg{Audio},
+            '-ss'  => $arg{Start},
+            '-q:a' => 8,
+            $out_file,
+        );
+    }
+}

@@ -1,0 +1,78 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use v5.32;
+use FindBin qw($Script);
+use Getopt::Long;
+
+my ($from, $to, $overwrite, $help) = (2, 4, 0, 0);
+GetOptions(
+    "from=i"    => \$from,
+    "to=i"      => \$to,
+    "overwrite" => \$overwrite,
+    "help"      => \$help,
+);
+
+if ( $help || @ARGV == 0 ) {
+    print "Usage: $Script [OPTION]... [FILE]...\n";
+    print "Changes the amount of spaces in file(s)\n";
+    print "\n";
+    print "Options:\n";
+    print "  -f, --from       Amount of Spaces to convert from. Default: 2\n";
+    print "  -t, --to         Amount of Spaces to convert to.   Default: 4\n";
+    print "  -o, --overwrite  By default, program prints output to stdout.\n";
+    print "                     If provided, it will overwrite the file.\n";
+    print "\n";
+    print "Examples:\n";
+    print "  $Script -f 2 -t 4 file.txt      -- Change 2 spaces to 4 printing to stdout.\n";
+    print "  $Script -f 8 -t 4 file.txt -o   -- Change 8 spaces to 4 and overwriting file.\n";
+}
+
+# Change Indentation of every file
+for my $file ( @ARGV ) {
+    changeIndent($file);
+}
+
+sub changeIndent {
+    my ( $file ) = @_;
+
+    # Open file for reading
+    open my $fh, '<', $file
+        or die (sprintf "Error: Cannot open file [%s]: $!\n", $file);
+
+    # Replace whitespace as wanted
+    my @output;
+    while (my $row = <$fh>) {
+        # If empty line
+        if ( $row =~ m/\A\s+\z/ ) {
+            # do nothing
+        }
+        # if leading whitespace
+        elsif ( $row =~ m/(\A\s+)/ ) {
+            my $current = length $1;
+            my $target  = " " x (($current / $from) * $to);
+            $row =~ s/\A\s+/$target/;
+        }
+
+        # print or save line
+        if ( $overwrite ) {
+            push @output, $row;
+        }
+        else {
+            print $row;
+        }
+    }
+    close $fh;
+
+    # if --overwrite, replace file
+    if ( $overwrite ) {
+        open my $fh, '>', $file
+            or die (sprintf "Error: Cannot open file [%s]: $!\n", $file);
+
+        for my $line ( @output ) {
+            print {$fh} $line;
+        }
+
+        close $fh;
+    }
+}
