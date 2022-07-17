@@ -5,10 +5,12 @@ use v5.32;
 use File::Slurp qw(read_file);
 use Parallel::ForkManager;
 use Data::Dump qw(dump);
+use Capture::Tiny qw(capture);
 
 my $audio = $ARGV[0];
 my $txt   = $ARGV[1];
 
+die "Usage: splitaudio audio.ogg audio.txt\n"       if @ARGV == 0;
 die "Error: Audio file [$audio] does not exists.\n" if not -e $audio;
 die "Error: Split file [$txt] does not exists.\n"   if not -e $txt;
 
@@ -86,22 +88,26 @@ sub convert {
         : sprintf("%02d. %s.ogg",      $track, $arg{Title});
     
     if ( exists $arg{Stop} && defined $arg{Stop} && $arg{Stop} =~ m/\A\d\d:\d\d:\d\d\z/ ) {
-        system(
-            'ffmpeg',
-            '-i'   => $arg{Audio},
-            '-ss'  => $arg{Start},
-            '-to'  => $arg{Stop},
-            '-q:a' => 8,
-            $out_file,
-        );
+        my $out = capture sub {
+            system(
+                'ffmpeg',
+                '-i'   => $arg{Audio},
+                '-ss'  => $arg{Start},
+                '-to'  => $arg{Stop},
+                '-q:a' => 8,
+                $out_file,
+            );
+        };
     }
     else {
-        system(
-            'ffmpeg',
-            '-i'   => $arg{Audio},
-            '-ss'  => $arg{Start},
-            '-q:a' => 8,
-            $out_file,
-        );
+        my $out = capture sub {
+            system(
+                'ffmpeg',
+                '-i'   => $arg{Audio},
+                '-ss'  => $arg{Start},
+                '-q:a' => 8,
+                $out_file,
+            );
+        };
     }
 }
