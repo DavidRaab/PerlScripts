@@ -1,0 +1,84 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use v5.10;
+use IPC::Run qw(run);
+use Data::Dump qw(dd);
+use Carp qw(croak);
+use Getopt::Long;
+use Term::ANSIColor qw(colored);
+use JSON qw(decode_json);
+
+## Configuration
+# User Agent to Use
+my $ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:96.0) Gecko/20100101 Firefox/96.0";
+
+# Path to youtube-dl
+my $yt = "yt-dlp";
+
+
+## 
+# Ansi Colors Helper
+sub create_colored {
+    my ($color) = @_;
+    return sub {
+        my ($str) = @_;
+        return colored([$color], $str);
+    }
+}
+
+*red  = create_colored("red");
+*cyan = create_colored("cyan");
+
+
+## 
+# CLI Options
+my ($name, $mp3, $ogg) = ("", 0, 1);
+GetOptions(
+    "n|name=s" => \$name,
+    "m|mp3"    => \$mp3,
+    "o|ogg"    => \$ogg,
+);
+
+
+##
+# Download file
+my ($in, $out, $err);
+my @command = ($yt, '--user-agent', $ua, qw(--quiet --continue --ignore-errors --id -f bestaudio --print-json), @ARGV);
+run \@command, \$in, \$out, \$err;
+
+# read Json
+my $json   = decode_json $out;
+my $source = $json->{_filename};
+my $info   = getTargetInformation($json, $name, $mp3, $ogg);
+
+# Convert file to audio
+if ( $info->{target} eq "mp3" ) {
+    system('ffmpeg', '-hide_banner', '-i', $source, '-q:a', 2, '--', $info->{filename});
+}
+else {
+    system('ffmpeg', '-hide_banner', '-i', $source, '-q:a', 8, '--', $info->{filename});
+}
+
+unlink $source;
+print red("Created: "), cyan($info->{filename}), "\n";
+
+
+sub getTargetInformation {
+    my ($json, $targetFilename, $mp3Flag, $oggFlag) = @_;
+    my $target = $mp3Flag ? "mp3" : "ogg";
+        
+    if ( $targetFilename ) {
+        return {
+            target   => $target,
+            filename => $targetFilename . ($mp3Flag ? ".mp3" : ".ogg"),
+        };
+    }
+    else {
+        my $dest = $json->{_filename} =~ s/\.[^.]+\z/.$target/r;
+        return {
+            target   => $target,
+            filename => $dest,
+        };
+    }
+}
