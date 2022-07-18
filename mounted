@@ -23,11 +23,11 @@ my @out =
   map {
     #       DEV          MOUNTPOINT     TYPE    OPTIONS
     if (m/\A(.+?)\s+on\s+(.+?)\s+type\s+(.+?)\s+(.+?)\s+\z/) {
-        [ $1, $2, $3 ];
+        [ $1, $2, $3, $4 ];
     }
   } qx(mount);
 
-my $table = Text::Table->new("DEV", "MOUNTPOINT", "TYPE");
+my $table = Text::Table->new("DEV", "MOUNTPOINT", "TYPE", "OPTIONS");
 $table->load(@out);
 print $table;
 
