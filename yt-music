@@ -8,6 +8,8 @@ use Carp qw(croak);
 use Getopt::Long;
 use Term::ANSIColor qw(colored);
 use JSON qw(decode_json);
+use URI;
+use URI::QueryParam;
 
 ## Configuration
 # User Agent to Use
@@ -40,11 +42,20 @@ GetOptions(
     "o|ogg"    => \$ogg,
 );
 
+# Get URL Parameter
+my $uri = URI->new($ARGV[0]) or die "Passed URL not valid.\n";
+die "Only http(s) is supported" if not ($uri->scheme eq 'http' || $uri->scheme eq 'https');
+
+# Only download a single file, not list, if --name parameter was passed
+if ( $name ) {
+    $uri = uri_params_delete_except($uri, 'v');
+}
+
 
 ##
 # Download file
 my ($in, $out, $err);
-my @command = ($yt, '--user-agent', $ua, qw(--quiet --continue --ignore-errors --id -f bestaudio --print-json), @ARGV);
+my @command = ($yt, '--user-agent', $ua, qw(--quiet --continue --ignore-errors --id -f bestaudio --print-json), $uri);
 run \@command, \$in, \$out, \$err;
 
 # read Json
@@ -81,4 +92,16 @@ sub getTargetInformation {
             filename => $dest,
         };
     }
+}
+
+sub uri_params_delete_except {
+    my ($u, @except) = @_;
+    my $uri = $u->clone;
+    
+    my %keep = map { $_ => 1 } @except;
+    for my $key ( $uri->query_param ) {
+        $uri->query_param_delete($key) if not $keep{$key};
+    }
+    
+    return $uri;
 }
