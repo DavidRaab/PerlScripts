@@ -54,6 +54,7 @@ my @synchronize = (
     d2("Daft Punk"), d2("Dub Fx"),
     d2("Enigma"), d2("E Nomine"), d2("Enya/Very Best of Enya"),
     d2("Foo Fighters"),
+    d2("Juno Reactor"),
 );
 
 
@@ -67,8 +68,8 @@ my @changes =
     map { diff_dirs($_->{Src}, $_->{Dst}) } @synchronize;
 
 # Generate a summary
-my $copies    = scalar grep { m/COPY/   } map { $_->[0] } @changes;
-my $deletions = scalar grep { m/DELETE/ } map { $_->[0] } @changes;
+my $copies    = scalar grep { $_->[0] =~ m/COPY/   } @changes;
+my $deletions = scalar grep { $_->[0] =~ m/DELETE/ } @changes;
 
 printf "Summary:\nCopies: %d\nDeletions: %s\n\n", $copies, $deletions;
 for my $change ( @changes ) {
@@ -152,13 +153,5 @@ sub execute_operation {
     }
     else {
         die "Unknown Operation [$operation]\n";
-    }
-}
-
-sub execute_operations {
-    my (@ops) = @_;
-    
-    for my $op ( @ops ) {
-        execute_operation(@$op);
     }
 }
