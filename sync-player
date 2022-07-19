@@ -1,0 +1,164 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use v5.32;
+use Data::Printer;
+use List::Util qw(any);
+use Path::Class qw(file dir);
+use File::Copy::Recursive qw(fcopy pathmk);
+use Term::ANSIColor qw(colored);
+
+# Todo:
+# * Configuration to a file
+# * Determine copy if file is different in size
+# * Flag if subdirectories should be copied or not
+# * Single files instead of directories
+
+# Ansi Colors Helper
+sub create_colored {
+    my ($color) = @_;
+    return sub {
+        my ($str) = @_;
+        return colored([$color], $str);
+    }
+}
+
+*blue = create_colored("blue");
+*red  = create_colored("red");
+*cyan = create_colored("cyan");
+
+# Helper Functions to create data-structure
+my $music = dir("/mnt/daten/Musik");
+sub d2 {
+    my ( $folder ) = @_;
+    return {
+        Src       => $music->subdir($folder),
+        Dst       => dir("/media/david/D2/MUSIC")->subdir(dir($folder)),
+        Recursive => 1, # TODO: Tell if subfolders should be copied or not
+    };
+}
+
+sub sd {
+    my ( $folder ) = @_;
+    return {
+        Src => $music->subdir($folder),
+        Dst => dir("/media/david/A770-7A18"),
+    };
+}
+
+# Folders to Synchronize
+my @synchronize = (
+    d2("2018"), d2("2019"), d2("2020"), d2("2021"), d2("2022-2"), d2("2wei"), d2("8 Graves"), 
+    d2("Adele"), d2("Apashe"),
+    d2("Best of Yiruma"),
+    d2("Daft Punk"), d2("Dub Fx"),
+    d2("Enigma"), d2("E Nomine"), d2("Enya/Very Best of Enya"),
+    d2("Foo Fighters"),
+);
+
+
+# Get all changes needed - with deletion of files first
+my @changes = 
+    sort {
+          $a->[0] eq 'COPY'   && $b->[0] eq 'DELETE' ?  1
+        : $a->[0] eq 'DELETE' && $b->[0] eq 'COPY'   ? -1
+        : 0
+    }
+    map { diff_dirs($_->{Src}, $_->{Dst}) } @synchronize;
+
+# Generate a summary
+my $copies    = scalar grep { m/COPY/   } map { $_->[0] } @changes;
+my $deletions = scalar grep { m/DELETE/ } map { $_->[0] } @changes;
+
+printf "Summary:\nCopies: %d\nDeletions: %s\n\n", $copies, $deletions;
+for my $change ( @changes ) {
+    execute_operation(@$change);
+}
+
+### Functions
+
+# returns full path of every file from a directory
+sub all_files {
+    my ($dir) = @_;
+    
+    my $content = [];
+    if ( -d $dir ) {
+        $content = $dir->traverse(sub {
+            my ($child, $cont, $content) = @_;
+        
+            if (-f $child) {
+                push @$content, $child;
+            }
+            else {
+                $cont->($content);
+            }
+        
+            return $content;
+        }, []);
+    }
+    
+    return wantarray ? @$content : $content;
+}
+
+# Returns a structure with the root and all files in an array
+sub files_inside {
+    my ( $dir ) = @_;
+    return {
+        Root  => $dir,
+        Files => [ map { $_->relative($dir) } all_files($dir) ],
+    };
+}
+
+sub diff_dirs {
+    my ($src_folder, $dst_folder) = @_;
+    
+    my $src = files_inside $src_folder;
+    my $dst = files_inside $dst_folder;
+    
+    # Changes operation
+    my @changes;
+    
+    # Which files should be deleted from DST
+    for my $file ( @{$dst->{Files}} ) {
+        if ( any { $file eq $_ } @{$src->{Files}} ) {
+        }
+        else {
+            push @changes, [DELETE => $dst->{Root}->file($file)];
+        }
+    }
+    
+    # Look which files should be copied from SRC to DST
+    for my $file ( @{$src->{Files}} ) {
+        if ( any { $file eq $_ } @{$dst->{Files}} ) {
+        }
+        else {
+            push @changes, [COPY => $src->{Root}->file($file), $dst->{Root}->file($file)];
+        }
+    }
+    
+    return wantarray ? @changes : \@changes;
+}
+
+sub execute_operation {
+    my ($operation, $x, $y) = @_;
+    
+    if ( $operation eq 'COPY' ) {
+        printf "%s %s => %s\n", red("Copying"), blue($x), cyan($y);
+        fcopy($x,$y);
+    }
+    elsif ( $operation eq 'DELETE' ) {
+        printf "%s %s\n", red("Deleting"), blue($x);
+        $x->remove;
+    }
+    else {
+        die "Unknown Operation [$operation]\n";
+    }
+}
+
+sub execute_operations {
+    my (@ops) = @_;
+    
+    for my $op ( @ops ) {
+        execute_operation(@$op);
+    }
+}
