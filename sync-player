@@ -8,14 +8,11 @@ use Color qw(red blue cyan);
 use Data::Printer;
 use Path::Class qw(file dir);
 use File::Copy::Recursive qw(fcopy pathmk);
-use Types::Standard qw(Object InstanceOf ArrayRef);
-use Type::Params qw(compile);
 
 # Todo:
 # * Configuration to a file
 # * Determine copy if file is different in size
 # * Single files instead of directories
-
 
 # Helper Functions to create data-structure
 sub sync {
@@ -58,20 +55,14 @@ my @changes =
     }
     map { $_->diff } @synchronize;
 
-# Generate a summary
+# Generate a summary of the work
 my $copies    = scalar grep { $_->[0] =~ m/COPY/   } @changes;
 my $deletions = scalar grep { $_->[0] =~ m/DELETE/ } @changes;
 
-printf "Summary:\nCopies: %d\nDeletions: %s\n\n", $copies, $deletions;
-for my $change ( @changes ) {
-    execute_operation(@$change);
-}
-
-
-
-### Functions
-sub execute_operation {
-    my ($operation, $x, $y) = @_;
+# Do the work
+printf "Summary\nCopies: %d\nDeletions: %s\n\n", $copies, $deletions;
+for my $change ( @changes ) {    
+    my ($operation, $x, $y) = @$change;
     
     if ( $operation eq 'COPY' ) {
         printf "%s %s => %s\n", red("Copying"), blue($x), cyan($y);
@@ -86,6 +77,9 @@ sub execute_operation {
     }
 }
 
+
+
+### Classes
 BEGIN {
     package Synchronize;
     use Moose;
