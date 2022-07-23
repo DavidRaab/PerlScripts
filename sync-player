@@ -22,20 +22,20 @@ sub sync {
     my ( $destination ) = @_;
     $destination = dir($destination);
     
-    my $source = dir("/mnt/daten/Musik");
+    my $music = dir("/mnt/daten/Musik");
     return sub {
         my ( $folder, %attr ) = @_;
         my $recursive = $attr{Recursive} // 1;
         return Synchronize->new(
-            source      => Directory->new({ dir => $source->subdir($folder)      }),
-            destination => Directory->new({ dir => $destination->subdir($folder) }),
+            source      => $music->subdir($folder),
+            destination => $destination->subdir($folder),
             recursive   => $recursive,
         );
     }
 }
 
 *d2 = sync("/media/david/D2/MUSIC");
-*sd = sync("/media/david/A770-7A18");
+#*sd = sync("/media/david/A770-7A18");
 
 # Folders to Synchronize
 my @synchronize = (
@@ -48,8 +48,6 @@ my @synchronize = (
     d2("Juno Reactor"),
     d2("Games", Recursive => 0),
 );
-
-
 
 # Get all changes needed - with deletion of files first
 my @changes = 
@@ -72,160 +70,176 @@ for my $change ( @changes ) {
 
 
 ### Functions
-# Returns a structure with the root and all files in an array
-sub make_relative_to {
-    state $check = compile(
-        InstanceOf['Path::Class::Dir'],
-        ArrayRef[InstanceOf['Path::Class::Entity']],
-    );
-    my ( $root, $files ) = &$check;
-    
-    return {
-        Root  => $root,
-        Files => [ map { $_->relative($root) } @$files ],
-    };
-}
-
 sub execute_operation {
     my ($operation, $x, $y) = @_;
     
     if ( $operation eq 'COPY' ) {
         printf "%s %s => %s\n", red("Copying"), blue($x), cyan($y);
-#        fcopy($x,$y);
+        fcopy($x,$y);
     }
     elsif ( $operation eq 'DELETE' ) {
         printf "%s %s\n", red("Deleting"), blue($x);
-#        $x->remove;
+        $x->remove;
     }
     else {
         die "Unknown Operation [$operation]\n";
     }
 }
 
-# Classes
 BEGIN {
-    package Directory;
+    package Synchronize;
     use Moose;
-    use Moose::Util::TypeConstraints;
-    use Types::Standard qw(Object InstanceOf Bool);
-    use Type::Params qw(compile_named);
-    use List::Util qw(any);
     use Path::Class;
-    use Data::Printer;
+    use List::Util qw(any);
+    use Types::Standard qw(InstanceOf Bool);
+    use Type::Params qw(compile);
+    use Moose::Util::TypeConstraints;
     use namespace::autoclean;
-    
+
     class_type 'PathClassDir', { class => 'Path::Class::Dir' };
+
     coerce 'PathClassDir',
         from 'Str',
         via { dir($_) };
-    
-    has 'dir' => (
+
+    has 'source' => (
         is       => 'ro',
         isa      => 'PathClassDir',
         required => 1,
-        coerce   => 1,
     );
-    
-    sub files {
-        state $check = compile_named(
-            { head => [ Object ] },
-            Recursive => Bool, { default => 1 },
-        );
-        my ( $self, $arg ) = &$check;
-        
-        # Content to build
-        my $files = [];
-        
-        # only run if directory exists
-        if ( -d $self->dir ) {
-            if ( $arg->{Recursive} ) {
-                $files = $self->dir->traverse(sub {
-                    my ($child, $cont, $files) = @_;
-                
-                    if (-f $child) {
-                        push @$files, $child;
-                    }
-                    else {
-                        $cont->($files);
-                    }
-                
-                    return $files;
-                }, []);
-            }
-            else {
-                while ( my $child = $self->dir->next ) {
-                    push @$files, $child if -f $child;
-                }
-            }
-        }
-        
-        return $files;
+
+    has 'destination' => (
+        is       => 'ro',
+        isa      => 'PathClassDir',
+        required => 1,
+    );
+
+    has 'recursive' => (
+        is       => 'ro',
+        isa      => Bool,
+        default  => 1,
+    );
+
+    sub source_files {
+        my ( $self ) = @_;
+        return list_files($self->source, Recursive => $self->recursive);
     }
-    
+
+    sub destination_files {
+        my ( $self ) = @_;
+        return list_files($self->destination, Recursive => $self->recursive);
+    }
+
     sub diff {
-        state $check = compile_named(
-            { head => [ Object, InstanceOf['Directory'] ] },
-            Recursive => Bool, { default => 1 },
-        );
-        my ( $self, $dest, $arg ) = &$check;
-        
+        my ( $self ) = @_;
+           
         # Changes operation
         my @changes;
         
         # Fetch file list only once
-        my $src = main::make_relative_to($self->dir, $self->files(Recursive => $arg->{Recursive}));
-        my $dst = main::make_relative_to($dest->dir, $dest->files(Recursive => $arg->{Recursive}));
+        my $src = RelativeFolder->from_absolute(
+            root  => $self->source,
+            files => $self->source_files,
+        );
+        my $dst = RelativeFolder->from_absolute(
+            root  => $self->destination,
+            files => $self->destination_files,
+        );
         
         # Which files should be deleted from DST
-        for my $file ( @{$dst->{Files}} ) {
-            if ( any { $file eq $_ } @{$src->{Files}} ) {
-            }
-            else {
-                push @changes, [DELETE => $dst->{Root}->file($file)];
+        for my $file ( $dst->all_files ) {
+            if ( not $src->contains($file) ) {
+                push @changes, [DELETE => $dst->root->file($file)];
             }
         }
         
         # Look which files should be copied from SRC to DST
-        for my $file ( @{$src->{Files}} ) {
-            if ( any { $file eq $_ } @{$dst->{Files}} ) {
-            }
-            else {
-                push @changes, [COPY => $src->{Root}->file($file), $dst->{Root}->file($file)];
+        for my $file ( $src->all_files ) {
+            if ( not $dst->contains($file) ) {
+                push @changes, [COPY => $src->root->file($file), $dst->root->file($file)];
             }
         }
         
         return wantarray ? @changes : \@changes;
     }
-    
-    __PACKAGE__->meta->make_immutable;
 
+
+    # returns full path of every file from a directory
+    sub list_files {
+        my ($dir, %attr) = @_;
+        my $recursive = $attr{Recursive} // 1;
+        
+        my $content = [];
+        if ( -d $dir ) {
+            if ( $recursive ) {
+                $content = $dir->traverse(sub {
+                    my ($child, $cont, $content) = @_;
+                
+                    if (-f $child) {
+                        push @$content, $child;
+                    }
+                    else {
+                        $cont->($content);
+                    }
+                
+                    return $content;
+                }, []);
+            }
+            else {
+                while ( my $x = $dir->next ) {
+                    push @$content, $x if -f $x;
+                }
+            }
+        }
+        
+        return $content;
+    }
     
-    package Synchronize;
+    package RelativeFolder;
     use Moose;
-    use namespace::autoclean;
+    use Types::Standard qw(Any InstanceOf ArrayRef);
+    use Type::Params qw(compile_named);
+    use List::Util qw(any);
     
-    has 'source' => (
+    has 'root' => (
         is       => 'ro',
-        isa      => 'Directory',
+        isa      => 'Path::Class::Dir',
         required => 1,
     );
     
-    has 'destination' => (
+    has 'files' => (
+        traits   => ['Array'],
         is       => 'ro',
-        isa      => 'Directory',
+        isa      => 'ArrayRef[Path::Class::File]',
         required => 1,
+        handles  => {
+            all_files => 'elements',
+        }
     );
     
-    has 'recursive' => (
-        is      => 'ro',
-        isa     => 'Bool',
-        default => 1,
-    );
+    sub contains {
+        my ( $self, $file ) = @_;
+        
+        if ( any { $file eq $_ } $self->all_files ) {
+            return 1;
+        }
+        
+        return 0;
+    }
     
-    sub diff {
-        my ( $self ) = @_;
-        my $diff = $self->source->diff($self->destination, Recursive => $self->recursive);
-        return wantarray ? @$diff : $diff;
+    # Class Method
+    sub from_absolute {
+        state $check = compile_named(
+            { head => 1 },
+            root  => InstanceOf['Path::Class::Dir'],
+            files => ArrayRef[InstanceOf['Path::Class::Entity']],
+        );
+        my ( $class, $arg ) = &$check;
+        
+        return RelativeFolder->new({
+            root  => $arg->{root},
+            files => [ map { $_->relative($arg->{root}) } @{$arg->{files}} ],
+        });
     }
     
     __PACKAGE__->meta->make_immutable;
