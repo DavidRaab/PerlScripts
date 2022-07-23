@@ -53,13 +53,10 @@ my @synchronize = (
 );
 
 # Get all changes needed - with deletion of files first
+my %order = ( DELETE => 1, COPY => 2 );
 my @changes = 
-    sort {
-          $a->[0] eq 'COPY'   && $b->[0] eq 'DELETE' ?  1
-        : $a->[0] eq 'DELETE' && $b->[0] eq 'COPY'   ? -1
-        : 0
-    }
-    map { $_->diff } @synchronize;
+    sort { $order{$a->[0]} <=> $order{$b->[0]} }
+    map  { $_->diff } @synchronize;
 
 
 # Summary of all changes
@@ -80,11 +77,11 @@ my $execute = {
     _PRE   => $summary,
     COPY   => sub { 
         printf "%s %s => %s\n", red("Copying"), blue($_[0]), cyan($_[1]);
-        fcopy($_[0],$_[1]) 
+        fcopy($_[0],$_[1]);
     },
     DELETE => sub {
         printf "%s %s\n", red("Deleting"), blue($_[0]);                  
-        $_[0]->remove      
+        $_[0]->remove;
     },
 };
 
