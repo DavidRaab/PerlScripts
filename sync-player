@@ -8,11 +8,17 @@ use Color qw(red blue cyan);
 use Data::Printer;
 use Path::Class qw(file dir);
 use File::Copy::Recursive qw(fcopy pathmk);
+use Getopt::Long;
 
 # Todo:
 # * Configuration to a file
 # * Determine copy if file is different in size
 # * Single files instead of directories
+
+my $force = 0;
+GetOptions(
+    "f|force" => \$force,
+) or die "Error in command line arguments\n";
 
 # Helper Functions to create data-structure
 sub sync {
@@ -55,28 +61,93 @@ my @changes =
     }
     map { $_->diff } @synchronize;
 
-# Generate a summary of the work
-my $copies    = scalar grep { $_->[0] =~ m/COPY/   } @changes;
-my $deletions = scalar grep { $_->[0] =~ m/DELETE/ } @changes;
 
-# Do the work
-printf "Summary\nCopies: %d\nDeletions: %s\n\n", $copies, $deletions;
-for my $change ( @changes ) {    
-    my ($operation, $x, $y) = @$change;
+# Summary of all changes
+my $summary = sub {
+    my ( @changes ) = @_;
     
-    if ( $operation eq 'COPY' ) {
-        printf "%s %s => %s\n", red("Copying"), blue($x), cyan($y);
-        fcopy($x,$y);
-    }
-    elsif ( $operation eq 'DELETE' ) {
-        printf "%s %s\n", red("Deleting"), blue($x);
-        $x->remove;
+    # Generate a summary of the work
+    my $copies    = scalar grep { $_->[0] =~ m/COPY/   } @changes;
+    my $deletions = scalar grep { $_->[0] =~ m/DELETE/ } @changes;
+
+    # Do the work
+    printf "Summary\nCopies: %d\nDeletions: %s\n\n", $copies, $deletions;
+};
+
+
+# dispatch-table
+my $execute = {
+    _PRE   => $summary,
+    COPY   => sub { 
+        printf "%s %s => %s\n", red("Copying"), blue($_[0]), cyan($_[1]);
+        fcopy($_[0],$_[1]) 
+    },
+    DELETE => sub {
+        printf "%s %s\n", red("Deleting"), blue($_[0]);                  
+        $_[0]->remove      
+    },
+};
+
+my $print = {
+    _PRE   => $summary,
+    COPY   => sub { printf "%s %s => %s\n", red("Copying"), blue($_[0]), cyan($_[1]) },
+    DELETE => sub { printf "%s %s\n", red("Deleting"), blue($_[0]) },
+    _POST  => sub { print red("No Copy/Delete has been done. Pass --force to do real work.\n") },
+};
+
+
+# Run Program
+$force 
+    ? run_operations($execute, @changes)
+    : run_operations($print, @changes);
+
+
+
+# Table: _PRE, _POST, COPY, DELETE, DEFAULT, _NOT_IMPLEMENTED
+sub run_operations {
+    my ( $dispatch, @operations ) = @_;
+    
+    # Provide a default NOT_IMPLEMENTED
+    my $not_implemented;
+    if ( exists $dispatch->{_NOT_IMPLEMENTED} ) {
+        $not_implemented = $dispatch->{_NOT_IMPLEMENTED};
     }
     else {
-        die "Unknown Operation [$operation]\n";
+        $not_implemented = sub {
+            my ($op) = @_;
+            die sprintf("Error: Operation [$op] Not Implemented.\n", $op);
+        };
     }
+    
+    $dispatch->{_PRE}(@operations) if exists $dispatch->{_PRE};
+    for my $op ( @operations ) {
+        if ( $op->[0] eq 'COPY' ) {
+            if ( exists $dispatch->{COPY} ) {
+                $dispatch->{COPY}($op->[1], $op->[2]);
+            }
+            else {
+                $not_implemented->('COPY');
+            }
+        }
+        elsif ( $op->[0] eq 'DELETE' ) {
+            if ( exists $dispatch->{DELETE} ) {
+                $dispatch->{DELETE}($op->[1]);
+            }
+            else {
+                $not_implemented->('DELETE');
+            }
+        }
+        else {
+            if ( exists $dispatch->{DEFAULT} ) {
+                $dispatch->{DEFAULT}(@$op);
+            }
+            else {
+                die sprintf("Unknown Operation [%s].\n", $op->[0]);
+            }
+        }
+    }
+    $dispatch->{_POST}(@operations) if exists $dispatch->{_POST};
 }
-
 
 
 ### Classes
