@@ -2,11 +2,14 @@
 use strict;
 use warnings;
 use v5.32;
+use FindBin;
+use lib "$FindBin::RealBin";
+use Color qw(red blue cyan);
 use Data::Printer;
-use List::Util qw(any);
 use Path::Class qw(file dir);
 use File::Copy::Recursive qw(fcopy pathmk);
-use Term::ANSIColor qw(colored);
+use Types::Standard qw(Object InstanceOf ArrayRef);
+use Type::Params qw(compile);
 
 # Todo:
 # * Configuration to a file
@@ -14,37 +17,26 @@ use Term::ANSIColor qw(colored);
 # * Flag if subdirectories should be copied or not
 # * Single files instead of directories
 
-# Ansi Colors Helper
-sub create_colored {
-    my ($color) = @_;
+
+# Helper Functions to create data-structure
+sub music {
+    my ( $destination ) = @_;
+    $destination = dir($destination);
+    
+    my $music = dir("/mnt/daten/Musik");
     return sub {
-        my ($str) = @_;
-        return colored([$color], $str);
+        my ( $folder, %attr ) = @_;
+        my $recursive = $attr{Recursive} // 1;
+        return Music->new(
+            source      => $music->subdir($folder),
+            destination => $destination->subdir($folder),
+            recursive   => $recursive,
+        );
     }
 }
 
-*blue = create_colored("blue");
-*red  = create_colored("red");
-*cyan = create_colored("cyan");
-
-# Helper Functions to create data-structure
-my $music = dir("/mnt/daten/Musik");
-sub d2 {
-    my ( $folder ) = @_;
-    return {
-        Src       => $music->subdir($folder),
-        Dst       => dir("/media/david/D2/MUSIC")->subdir(dir($folder)),
-        Recursive => 1, # TODO: Tell if subfolders should be copied or not
-    };
-}
-
-sub sd {
-    my ( $folder ) = @_;
-    return {
-        Src => $music->subdir($folder),
-        Dst => dir("/media/david/A770-7A18"),
-    };
-}
+*d2 = music("/media/david/D2/MUSIC");
+*sd = music("/media/david/A770-7A18");
 
 # Folders to Synchronize
 my @synchronize = (
@@ -55,8 +47,8 @@ my @synchronize = (
     d2("Enigma"), d2("E Nomine"), d2("Enya/Very Best of Enya"),
     d2("Foo Fighters"),
     d2("Juno Reactor"),
+    d2("Games", Recursive => 0),
 );
-
 
 # Get all changes needed - with deletion of files first
 my @changes = 
@@ -65,7 +57,7 @@ my @changes =
         : $a->[0] eq 'DELETE' && $b->[0] eq 'COPY'   ? -1
         : 0
     }
-    map { diff_dirs($_->{Src}, $_->{Dst}) } @synchronize;
+    map { $_->diff } @synchronize;
 
 # Generate a summary
 my $copies    = scalar grep { $_->[0] =~ m/COPY/   } @changes;
@@ -76,68 +68,21 @@ for my $change ( @changes ) {
     execute_operation(@$change);
 }
 
+
+
 ### Functions
-
-# returns full path of every file from a directory
-sub all_files {
-    my ($dir) = @_;
-    
-    my $content = [];
-    if ( -d $dir ) {
-        $content = $dir->traverse(sub {
-            my ($child, $cont, $content) = @_;
-        
-            if (-f $child) {
-                push @$content, $child;
-            }
-            else {
-                $cont->($content);
-            }
-        
-            return $content;
-        }, []);
-    }
-    
-    return wantarray ? @$content : $content;
-}
-
 # Returns a structure with the root and all files in an array
-sub files_inside {
-    my ( $dir ) = @_;
+sub make_relative_to {
+    state $check = compile(
+        InstanceOf['Path::Class::Dir'],
+        ArrayRef[InstanceOf['Path::Class::Entity']],
+    );
+    my ( $root, $files ) = &$check;
+    
     return {
-        Root  => $dir,
-        Files => [ map { $_->relative($dir) } all_files($dir) ],
+        Root  => $root,
+        Files => [ map { $_->relative($root) } @$files ],
     };
-}
-
-sub diff_dirs {
-    my ($src_folder, $dst_folder) = @_;
-    
-    my $src = files_inside $src_folder;
-    my $dst = files_inside $dst_folder;
-    
-    # Changes operation
-    my @changes;
-    
-    # Which files should be deleted from DST
-    for my $file ( @{$dst->{Files}} ) {
-        if ( any { $file eq $_ } @{$src->{Files}} ) {
-        }
-        else {
-            push @changes, [DELETE => $dst->{Root}->file($file)];
-        }
-    }
-    
-    # Look which files should be copied from SRC to DST
-    for my $file ( @{$src->{Files}} ) {
-        if ( any { $file eq $_ } @{$dst->{Files}} ) {
-        }
-        else {
-            push @changes, [COPY => $src->{Root}->file($file), $dst->{Root}->file($file)];
-        }
-    }
-    
-    return wantarray ? @changes : \@changes;
 }
 
 sub execute_operation {
@@ -145,13 +90,129 @@ sub execute_operation {
     
     if ( $operation eq 'COPY' ) {
         printf "%s %s => %s\n", red("Copying"), blue($x), cyan($y);
-        fcopy($x,$y);
+#        fcopy($x,$y);
     }
     elsif ( $operation eq 'DELETE' ) {
         printf "%s %s\n", red("Deleting"), blue($x);
-        $x->remove;
+#        $x->remove;
     }
     else {
         die "Unknown Operation [$operation]\n";
     }
 }
+
+BEGIN {
+    package Music;
+    use Moose;
+    use Path::Class;
+    use List::Util qw(any);
+    use Types::Standard qw(InstanceOf Bool);
+    use Type::Params qw(compile);
+    use Moose::Util::TypeConstraints;
+    use namespace::autoclean;
+
+    class_type 'PathClassDir', { class => 'Path::Class::Dir' };
+
+    coerce 'PathClassDir',
+        from 'Str',
+        via { dir($_) };
+
+    has 'source' => (
+        is       => 'ro',
+        isa      => 'PathClassDir',
+        required => 1,
+    );
+
+    has 'destination' => (
+        is       => 'ro',
+        isa      => 'PathClassDir',
+        required => 1,
+    );
+
+    has 'recursive' => (
+        is       => 'ro',
+        isa      => Bool,
+        default  => 1,
+    );
+
+    sub source_files {
+        my ( $self ) = @_;
+        return list_files($self->source, Recursive => $self->recursive);
+    }
+
+    sub destination_files {
+        my ( $self ) = @_;
+        return list_files($self->destination, Recursive => $self->recursive);
+    }
+
+    sub diff {
+        my ( $self ) = @_;
+           
+        # Changes operation
+        my @changes;
+        
+        # Fetch file list only once
+        my $src = main::make_relative_to($self->source,      $self->source_files);
+        my $dst = main::make_relative_to($self->destination, $self->destination_files);
+        
+        # Which files should be deleted from DST
+        for my $file ( @{$dst->{Files}} ) {
+            if ( any { $file eq $_ } @{$src->{Files}}) {
+            }
+            else {
+                push @changes, [DELETE => $dst->{Root}->file($file)];
+            }
+        }
+        
+        # Look which files should be copied from SRC to DST
+        for my $file ( @{$src->{Files}} ) {
+            if ( any { $file eq $_ } @{$dst->{Files}} ) {
+            }
+            else {
+                push @changes, [COPY => $src->{Root}->file($file), $dst->{Root}->file($file)];
+            }
+        }
+        
+        return wantarray ? @changes : \@changes;
+    }
+
+
+    # returns full path of every file from a directory
+    sub list_files {
+        my ($dir, %attr) = @_;
+        my $recursive = $attr{Recursive} // 1;
+        
+        my $content = [];
+        if ( -d $dir ) {
+            if ( $recursive ) {
+                $content = $dir->traverse(sub {
+                    my ($child, $cont, $content) = @_;
+                
+                    if (-f $child) {
+                        push @$content, $child;
+                    }
+                    else {
+                        $cont->($content);
+                    }
+                
+                    return $content;
+                }, []);
+            }
+            else {
+                while ( my $x = $dir->next ) {
+                    push @$content, $x if -f $x;
+                }
+            }
+        }
+        
+        return $content;
+    }
+}
+
+
+
+
+
+
+
+
