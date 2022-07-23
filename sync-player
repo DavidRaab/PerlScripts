@@ -94,9 +94,8 @@ my $print = {
 
 
 # Run Program
-$force 
-    ? run_operations($execute, @changes)
-    : run_operations($print, @changes);
+$force ? run_operations($execute, @changes)
+       : run_operations($print, @changes);
 
 
 
