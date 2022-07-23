@@ -2,10 +2,13 @@
 use strict;
 use warnings;
 use v5.10;
+use FindBin;
+use lib "$FindBin::RealBin";
 use IPC::Run qw(run);
 use Data::Dump qw(dd);
 use Carp qw(croak);
 use Getopt::Long;
+use Color qw(red cyan);
 use Term::ANSIColor qw(colored);
 use JSON qw(decode_json);
 use URI;
@@ -17,21 +20,6 @@ my $ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:96.0) Gecko/20100101 Fire
 
 # Path to youtube-dl
 my $yt = "yt-dlp";
-
-
-## 
-# Ansi Colors Helper
-sub create_colored {
-    my ($color) = @_;
-    return sub {
-        my ($str) = @_;
-        return colored([$color], $str);
-    }
-}
-
-*red  = create_colored("red");
-*cyan = create_colored("cyan");
-
 
 ## 
 # CLI Options
