@@ -68,7 +68,7 @@ my $summary = sub {
     my $deletions = scalar grep { $_->[0] =~ m/DELETE/ } @changes;
 
     # Do the work
-    printf "Summary\nCopies: %d\nDeletions: %s\n\n", $copies, $deletions;
+    printf "Summary\nCopies:    %d\nDeletions: %s\n\n", $copies, $deletions;
 };
 
 
@@ -89,7 +89,7 @@ my $print = {
     _PRE   => $summary,
     COPY   => sub { printf "%s %s => %s\n", red("Copying"), blue($_[0]), cyan($_[1]) },
     DELETE => sub { printf "%s %s\n", red("Deleting"), blue($_[0]) },
-    _POST  => sub { print red("No Copy/Delete has been done. Pass --force to do real work.\n") },
+    _POST  => sub { print red("\nNo Copy/Delete has been done. Pass --force to do real work.\n") },
 };
 
 
