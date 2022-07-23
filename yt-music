@@ -55,8 +55,8 @@ if ( $name ) {
 ##
 # Download file
 my ($in, $out, $err);
-my @command = ($yt, '--user-agent', $ua, qw(--quiet --continue --ignore-errors --id -f bestaudio --print-json), $uri);
-run \@command, \$in, \$out, \$err;
+run [$yt, '--user-agent', $ua, qw(--quiet --continue --ignore-errors --id -f bestaudio --print-json), $uri], 
+    \$in, \$out, \$err;
 
 # read Json
 my $json   = decode_json $out;
