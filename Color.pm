@@ -3,10 +3,10 @@ use strict;
 use warnings;
 use Term::ANSIColor qw(colored);
 use Sub::Exporter -setup => {
-    exports => [ qw(blue red cyan) ],
+    exports => [ qw(black red green yellow blue magenta cyan white) ],
 };
 
-# Ansi Colors Helper
+# creates a new function with color partial applied
 sub create_colored {
     my ($color) = @_;
     return sub {
@@ -15,8 +15,9 @@ sub create_colored {
     }
 }
 
-*blue = create_colored("blue");
-*red  = create_colored("red");
-*cyan = create_colored("cyan");
+for my $color ( qw/black red green yellow blue magenta cyan white/ ) {
+    no strict 'refs';
+    *$color = create_colored($color);
+}
 
 1;
