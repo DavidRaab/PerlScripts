@@ -52,110 +52,137 @@ my @synchronize = (
     d2("Games", Recursive => 0),
 );
 
-# Get all changes needed - with deletion of files first
-my %order = ( DELETE => 1, COPY => 2 );
-my @changes = 
-    sort { $order{$a->[0]} <=> $order{$b->[0]} }
-    map  { $_->diff } @synchronize;
+# All changes
+my @changes = map { $_->diff } @synchronize;
 
+# cata example to count copies and deletions
+sub count_operations {
+    my ( @ops ) = @_;
 
-# Summary of all changes
-my $summary = sub {
-    my ( @changes ) = @_;
+    my $amount = cata_operations({
+        COPY   => sub { my ($op,$s) = @_; [ $s->[0] + 1, $s->[1]     ] },
+        DELETE => sub { my ($op,$s) = @_; [ $s->[0]    , $s->[1] + 1 ] },
+    }, [0,0], @ops);
     
-    # Generate a summary of the work
-    my $copies    = scalar grep { $_->[0] =~ m/COPY/   } @changes;
-    my $deletions = scalar grep { $_->[0] =~ m/DELETE/ } @changes;
+    return {
+        Copies    => $amount->[0],
+        Deletions => $amount->[1],
+    };
+}
 
-    # Do the work
-    printf "Summary\nCopies:    %d\nDeletions: %s\n\n", $copies, $deletions;
-};
+my $amount = count_operations(@changes);
+
+
+# cata example to divide into copies and deletions
+sub split_operations {
+    my ( @ops ) = @_;
+    
+    my @copies;
+    my @deletions;
+    
+    cata_operations({
+        COPY   => sub { push @copies,    $_[0] },
+        DELETE => sub { push @deletions, $_[0] },
+    }, "", @ops);
+    
+    return { Copies => \@copies, Deletions => \@deletions };
+}
+
+my $split = split_operations(@changes);
+@changes = ( @{$split->{Deletions}}, @{$split->{Copies}} );
+
+
+# Summary
+print "Summary\n";
+printf "Copies:    %d\n", $amount->{Copies};
+printf "Deletions: %d\n\n", $amount->{Deletions};
 
 
 # dispatch-table
 my $execute = {
-    _PRE   => $summary,
     COPY   => sub { 
-        printf "%s %s => %s\n", red("Copying"), blue($_[0]), cyan($_[1]);
-        fcopy($_[0],$_[1]);
+        my ( $op ) = @_;
+        printf "%s %s => %s\n", red("Copying"), blue($op->src), cyan($op->dst);
+        fcopy($op->src, $op->dst);
     },
     DELETE => sub {
-        printf "%s %s\n", red("Deleting"), blue($_[0]);                  
-        $_[0]->remove;
+        my ( $op ) = @_;
+        printf "%s %s\n", red("Deleting"), blue($op->file);
+        $op->file->remove;
     },
 };
 
 my $print = {
-    _PRE   => $summary,
-    COPY   => sub { printf "%s %s => %s\n", red("Copying"), blue($_[0]), cyan($_[1]) },
-    DELETE => sub { printf "%s %s\n", red("Deleting"), blue($_[0]) },
+    COPY   => sub { printf "%s %s => %s\n", red("Copying"), blue($_[0]->src), cyan($_[0]->dst) },
+    DELETE => sub { printf "%s %s\n", red("Deleting"), blue($_[0]->file) },
     _POST  => sub { print red("\nNo Copy/Delete has been done. Pass --force to do real work.\n") },
 };
 
 
 # Run Program
-$force ? run_operations($execute, @changes)
-       : run_operations($print, @changes);
+$force ? cata_operations($execute, {}, @changes)
+       : cata_operations($print,   {}, @changes);
 
 
 
-# Table: _PRE, _POST, COPY, DELETE, DEFAULT, _NOT_IMPLEMENTED
-sub run_operations {
-    my ( $dispatch, @operations ) = @_;
+# Table: _PRE, _POST, COPY, DELETE
+# Catamorphism over Operations Array
+sub cata_operations {
+    my ( $dispatch, $state, @operations ) = @_;
     
-    # Provide a default NOT_IMPLEMENTED
-    my $not_implemented;
-    if ( exists $dispatch->{_NOT_IMPLEMENTED} ) {
-        $not_implemented = $dispatch->{_NOT_IMPLEMENTED};
-    }
-    else {
-        $not_implemented = sub {
-            my ($op) = @_;
-            die sprintf("Error: Operation [$op] Not Implemented.\n", $op);
-        };
-    }
+    die "Error: COPY does not exists in dispatch-table.\n"   if not exists $dispatch->{COPY};
+    die "Error: DELETE does not exists in dispatch-table.\n" if not exists $dispatch->{DELETE};
     
     $dispatch->{_PRE}(@operations) if exists $dispatch->{_PRE};
     for my $op ( @operations ) {
-        if ( $op->[0] eq 'COPY' ) {
-            if ( exists $dispatch->{COPY} ) {
-                $dispatch->{COPY}($op->[1], $op->[2]);
-            }
-            else {
-                $not_implemented->('COPY');
-            }
+        if ( $op->is_copy ) {
+            $state = $dispatch->{COPY}($op, $state);
         }
-        elsif ( $op->[0] eq 'DELETE' ) {
-            if ( exists $dispatch->{DELETE} ) {
-                $dispatch->{DELETE}($op->[1]);
-            }
-            else {
-                $not_implemented->('DELETE');
-            }
+        elsif ( $op->is_delete ) {
+            $state = $dispatch->{DELETE}($op, $state);
         }
         else {
-            if ( exists $dispatch->{DEFAULT} ) {
-                $dispatch->{DEFAULT}(@$op);
-            }
-            else {
-                die sprintf("Unknown Operation [%s].\n", $op->[0]);
-            }
+            die "Fatal Error: An operation was not handled.\n";
         }
     }
     $dispatch->{_POST}(@operations) if exists $dispatch->{_POST};
+    
+    return $state;
 }
 
 
 ### Classes
 BEGIN {
+    package Operation;
+    use namespace::autoclean;
+    use Moose::Role;
+    requires 'tag';
+    sub is_copy   { $_[0]->tag eq 'COPY'   }
+    sub is_delete { $_[0]->tag eq 'DELETE' }
+
+    package Delete;
+    use namespace::autoclean;
+    use Moose;
+    with 'Operation';
+    sub tag { return 'DELETE' }
+    has 'file' => (is => 'ro', isa => 'Path::Class::File', required => 1);
+    
+    package Copy;
+    use namespace::autoclean;
+    use Moose;
+    with 'Operation';
+    sub tag { return 'COPY' }
+    has 'src' => (is => 'ro', isa => 'Path::Class::File', required => 1);
+    has 'dst' => (is => 'ro', isa => 'Path::Class::File', required => 1);
+
     package Synchronize;
+    use namespace::autoclean;
     use Moose;
     use Path::Class;
     use List::Util qw(any);
     use Types::Standard qw(InstanceOf Bool);
     use Type::Params qw(compile);
     use Moose::Util::TypeConstraints;
-    use namespace::autoclean;
 
     class_type 'PathClassDir', { class => 'Path::Class::Dir' };
 
@@ -163,23 +190,36 @@ BEGIN {
         from 'Str',
         via { dir($_) };
 
-    has 'source' => (
-        is       => 'ro',
-        isa      => 'PathClassDir',
-        required => 1,
-    );
-
-    has 'destination' => (
-        is       => 'ro',
-        isa      => 'PathClassDir',
-        required => 1,
-    );
-
-    has 'recursive' => (
-        is       => 'ro',
-        isa      => Bool,
-        default  => 1,
-    );
+    has 'source'      => ( is => 'ro', isa => 'PathClassDir', required => 1 );
+    has 'destination' => ( is => 'ro', isa => 'PathClassDir', required => 1 );
+    has 'recursive'   => ( is => 'ro', isa => Bool, default => 1 );
+    
+    # returns full path of every file from a directory
+    my sub list_files {
+        my ($dir, %attr) = @_;
+        my $recursive = $attr{Recursive} // 1;
+        
+        my $content = [];
+        if ( -d $dir ) {
+            if ( $recursive ) {
+                $content = $dir->traverse(sub {
+                    my ($child, $cont, $content) = @_;
+                
+                    -f $child ? push @$content, $child
+                              : $cont->($content);
+                
+                    return $content;
+                }, []);
+            }
+            else {
+                while ( my $x = $dir->next ) {
+                    push @$content, $x if -f $x;
+                }
+            }
+        }
+        
+        return $content;
+    }
 
     sub source_files {
         my ( $self ) = @_;
@@ -210,53 +250,23 @@ BEGIN {
         # Which files should be deleted from DST
         for my $file ( $dst->all_files ) {
             if ( not $src->contains($file) ) {
-                push @changes, [DELETE => $dst->root->file($file)];
+                push @changes, Delete->new(file => $dst->root->file($file));
             }
         }
         
         # Look which files should be copied from SRC to DST
         for my $file ( $src->all_files ) {
             if ( not $dst->contains($file) ) {
-                push @changes, [COPY => $src->root->file($file), $dst->root->file($file)];
+                push @changes, Copy->new(src => $src->root->file($file), dst => $dst->root->file($file));
             }
         }
         
         return wantarray ? @changes : \@changes;
     }
 
-
-    # returns full path of every file from a directory
-    sub list_files {
-        my ($dir, %attr) = @_;
-        my $recursive = $attr{Recursive} // 1;
-        
-        my $content = [];
-        if ( -d $dir ) {
-            if ( $recursive ) {
-                $content = $dir->traverse(sub {
-                    my ($child, $cont, $content) = @_;
-                
-                    if (-f $child) {
-                        push @$content, $child;
-                    }
-                    else {
-                        $cont->($content);
-                    }
-                
-                    return $content;
-                }, []);
-            }
-            else {
-                while ( my $x = $dir->next ) {
-                    push @$content, $x if -f $x;
-                }
-            }
-        }
-        
-        return $content;
-    }
     
     package RelativeFolder;
+    use namespace::autoclean;
     use Moose;
     use Types::Standard qw(Any InstanceOf ArrayRef);
     use Type::Params qw(compile_named);
@@ -264,14 +274,14 @@ BEGIN {
     
     has 'root' => (
         is       => 'ro',
-        isa      => 'Path::Class::Dir',
+        isa      => InstanceOf['Path::Class::Dir'],
         required => 1,
     );
     
     has 'files' => (
         traits   => ['Array'],
         is       => 'ro',
-        isa      => 'ArrayRef[Path::Class::File]',
+        isa      => ArrayRef[InstanceOf['Path::Class::File']],
         required => 1,
         handles  => {
             all_files => 'elements',
@@ -293,7 +303,7 @@ BEGIN {
         state $check = compile_named(
             { head => 1 },
             root  => InstanceOf['Path::Class::Dir'],
-            files => ArrayRef[InstanceOf['Path::Class::Entity']],
+            files => ArrayRef[InstanceOf['Path::Class::File']],
         );
         my ( $class, $arg ) = &$check;
         
@@ -302,8 +312,6 @@ BEGIN {
             files => [ map { $_->relative($arg->{root}) } @{$arg->{files}} ],
         });
     }
-    
-    __PACKAGE__->meta->make_immutable;
 }
 
 
