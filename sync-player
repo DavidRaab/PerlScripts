@@ -13,7 +13,6 @@ use Getopt::Long;
 
 # Todo:
 # * Configuration to a file
-# * Determine copy if file is different in size
 # * Single files instead of directories
 
 my $force = 0;
@@ -167,17 +166,32 @@ BEGIN {
         if ( -d $dir ) {
             if ( $recursive ) {
                 $content = $dir->traverse(sub {
-                    my ($child, $cont, $content) = @_;
+                    my ($x, $cont, $content) = @_;
                 
-                    -f $child ? push @$content, $child
-                              : $cont->($content);
+                    # if file, push to content
+                    if ( -f $x ) {
+                        push @$content, {
+                            File =>    $x,
+                            Size => -s $x,
+                        };
+                        
+                    }
+                    # otherwise traverse recursively
+                    else {
+                        $cont->($content);
+                    }
                 
                     return $content;
                 }, []);
             }
             else {
                 while ( my $x = $dir->next ) {
-                    push @$content, $x if -f $x;
+                    if ( -f $x ) {
+                        push @$content, {
+                            File =>    $x,
+                            Size => -s $x,
+                        };
+                    }
                 }
             }
         }
@@ -213,15 +227,32 @@ BEGIN {
         
         # Which files should be deleted from DST
         for my $file ( $dst->all_files ) {
-            if ( not $src->contains($file) ) {
-                push @changes, Delete->new(file => $dst->root->file($file));
+            if ( not defined $src->find_file($file->{File}) ) {
+                push @changes, Delete->new(file => $dst->root->file($file->{File}));
             }
         }
         
         # Look which files should be copied from SRC to DST
-        for my $file ( $src->all_files ) {
-            if ( not $dst->contains($file) ) {
-                push @changes, Copy->new(src => $src->root->file($file), dst => $dst->root->file($file));
+        for my $src_file ( $src->all_files ) {
+            my $file = $src_file->{File};
+            my $size = $src_file->{Size};
+            my $copy = Copy->new(
+                src => $src->root->file($file),
+                dst => $dst->root->file($file),
+            );
+        
+            # Look if file exists in dst
+            my $dst_file = $dst->find_file($file);
+            # if file exists 
+            if ( defined $dst_file ) {
+                # but file size is different, then copy
+                if ( $dst_file->{Size} != $size ) {
+                    push @changes, $copy;
+                }
+            }
+            # if not in dst, also copy
+            else {
+                push @changes, $copy;
             }
         }
         
@@ -232,9 +263,8 @@ BEGIN {
     package RelativeFolder;
     use namespace::autoclean;
     use Moose;
-    use Types::Standard qw(Any InstanceOf ArrayRef);
+    use Types::Standard qw(Any InstanceOf ArrayRef Dict Int);
     use Type::Params qw(compile_named);
-    use List::Util qw(any);
     
     has 'root' => (
         is       => 'ro',
@@ -245,21 +275,22 @@ BEGIN {
     has 'files' => (
         traits   => ['Array'],
         is       => 'ro',
-        isa      => ArrayRef[InstanceOf['Path::Class::File']],
+        isa      =>
+            ArrayRef[
+                Dict[
+                    File => InstanceOf['Path::Class::File'],
+                    Size => Int,
+                ]],
         required => 1,
         handles  => {
-            all_files => 'elements',
+            all_files  => 'elements',
+            first_file => 'first',
         }
     );
     
-    sub contains {
+    sub find_file {
         my ( $self, $file ) = @_;
-        
-        if ( any { $file eq $_ } $self->all_files ) {
-            return 1;
-        }
-        
-        return 0;
+        return $self->first_file(sub { $_->{File} eq $file });
     }
     
     # Class Method
@@ -267,13 +298,16 @@ BEGIN {
         state $check = compile_named(
             { head => 1 },
             root  => InstanceOf['Path::Class::Dir'],
-            files => ArrayRef[InstanceOf['Path::Class::File']],
+            files => ArrayRef[Dict[File => InstanceOf['Path::Class::File'], Size => Int]],
         );
         my ( $class, $arg ) = &$check;
         
         return RelativeFolder->new({
             root  => $arg->{root},
-            files => [ map { $_->relative($arg->{root}) } @{$arg->{files}} ],
+            files => [ map +{
+                File => $_->{File}->relative($arg->{root}),
+                Size => $_->{Size},
+            }, @{$arg->{files}} ],
         });
     }
 }
