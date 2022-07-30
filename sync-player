@@ -130,16 +130,9 @@ BEGIN {
     use Path::Class;
     use Types::Standard qw(Bool);
     use Type::Params qw(compile);
-    use Moose::Util::TypeConstraints;
 
-    class_type 'PathClassDir', { class => 'Path::Class::Dir' };
-
-    coerce 'PathClassDir',
-        from 'Str',
-        via { dir($_) };
-
-    has 'source'      => ( is => 'ro', isa => 'PathClassDir', required => 1 );
-    has 'destination' => ( is => 'ro', isa => 'PathClassDir', required => 1 );
+    has 'source'      => ( is => 'ro', isa => 'Path::Class::Dir', required => 1 );
+    has 'destination' => ( is => 'ro', isa => 'Path::Class::Dir', required => 1 );
     has 'recursive'   => ( is => 'ro', isa => Bool, default => 1 );
     
     # returns full path of every file from a directory
