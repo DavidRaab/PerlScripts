@@ -8,6 +8,7 @@ use Color qw(red blue cyan);
 use Data::Printer;
 use Path::Class qw(file dir);
 use File::Copy::Recursive qw(fcopy pathmk);
+use List::Util qw(reduce);
 use Getopt::Long;
 
 # Todo:
@@ -38,7 +39,7 @@ sub sync {
 }
 
 *d2 = sync("/media/david/D2/MUSIC");
-#*sd = sync("/media/david/A770-7A18");
+*sd = sync("/media/david/A770-7A18");
 
 # Folders to Synchronize
 my @synchronize = (
@@ -50,105 +51,56 @@ my @synchronize = (
     d2("Foo Fighters"),
     d2("Juno Reactor"),
     d2("Games", Recursive => 0),
+    sd("Keep Calm And Feel The Reggae"),
 );
 
 # All changes
 my @changes = map { $_->diff } @synchronize;
 
-# cata example to count copies and deletions
-sub count_operations {
-    my ( @ops ) = @_;
-
-    my $amount = cata_operations({
-        COPY   => sub { my ($op,$s) = @_; [ $s->[0] + 1, $s->[1]     ] },
-        DELETE => sub { my ($op,$s) = @_; [ $s->[0]    , $s->[1] + 1 ] },
-    }, [0,0], @ops);
-    
-    return {
-        Copies    => $amount->[0],
-        Deletions => $amount->[1],
-    };
-}
-
-my $amount = count_operations(@changes);
+# get count of each operation
+my $amount = reduce {
+    $b->match(
+        COPY   => sub { $a->{Copies}++;    $a },
+        DELETE => sub { $a->{Deletions}++; $a },
+    );
+} {Copies => 0, Deletions => 0}, @changes;
 
 
-# cata example to divide into copies and deletions
-sub split_operations {
-    my ( @ops ) = @_;
-    
-    my @copies;
-    my @deletions;
-    
-    cata_operations({
-        COPY   => sub { push @copies,    $_[0] },
-        DELETE => sub { push @deletions, $_[0] },
-    }, "", @ops);
-    
-    return { Copies => \@copies, Deletions => \@deletions };
-}
+# split operations into copy/delete
+my $ops = reduce {
+    $b->match(
+        COPY   => sub { push @{$a->{Copies}},    $b; $a },
+        DELETE => sub { push @{$a->{Deletions}}, $b; $a },
+    );
+} {Copies => [], Deletions => []}, @changes;
 
-my $split = split_operations(@changes);
-@changes = ( @{$split->{Deletions}}, @{$split->{Copies}} );
+# Re-Order operations by Deletions first
+@changes = ( @{$ops->{Deletions}}, @{$ops->{Copies}} );
 
 
-# Summary
-print "Summary\n";
+# Start Program by Summary
+print  "Summary\n";
 printf "Copies:    %d\n", $amount->{Copies};
 printf "Deletions: %d\n\n", $amount->{Deletions};
 
-
-# dispatch-table
-my $execute = {
-    COPY   => sub { 
-        my ( $op ) = @_;
-        printf "%s %s => %s\n", red("Copying"), blue($op->src), cyan($op->dst);
-        fcopy($op->src, $op->dst);
-    },
-    DELETE => sub {
-        my ( $op ) = @_;
-        printf "%s %s\n", red("Deleting"), blue($op->file);
-        $op->file->remove;
-    },
-};
-
-my $print = {
-    COPY   => sub { printf "%s %s => %s\n", red("Copying"), blue($_[0]->src), cyan($_[0]->dst) },
-    DELETE => sub { printf "%s %s\n", red("Deleting"), blue($_[0]->file) },
-    _POST  => sub { print red("\nNo Copy/Delete has been done. Pass --force to do real work.\n") },
-};
-
-
-# Run Program
-$force ? cata_operations($execute, {}, @changes)
-       : cata_operations($print,   {}, @changes);
-
-
-
-# Table: _PRE, _POST, COPY, DELETE
-# Catamorphism over Operations Array
-sub cata_operations {
-    my ( $dispatch, $state, @operations ) = @_;
-    
-    die "Error: COPY does not exists in dispatch-table.\n"   if not exists $dispatch->{COPY};
-    die "Error: DELETE does not exists in dispatch-table.\n" if not exists $dispatch->{DELETE};
-    
-    $dispatch->{_PRE}(@operations) if exists $dispatch->{_PRE};
-    for my $op ( @operations ) {
-        if ( $op->is_copy ) {
-            $state = $dispatch->{COPY}($op, $state);
-        }
-        elsif ( $op->is_delete ) {
-            $state = $dispatch->{DELETE}($op, $state);
-        }
-        else {
-            die "Fatal Error: An operation was not handled.\n";
-        }
-    }
-    $dispatch->{_POST}(@operations) if exists $dispatch->{_POST};
-    
-    return $state;
+for my $op ( @changes ) {
+    $op->match(
+        COPY => sub {
+            printf "%s %s => %s\n", red("Copying"), blue($op->src), cyan($op->dst);
+            fcopy($op->src, $op->dst) if $force;
+        },
+        DELETE => sub {
+            printf "%s %s\n", red("Deleting"), blue($op->file);
+            $op->file->remove if $force;
+        },
+    );
 }
+
+if ( not $force ) {
+    print red("\nNo Copy/Delete has been done. Pass --force to do real work.\n");
+}
+
+# Program End
 
 
 ### Classes
@@ -166,6 +118,10 @@ BEGIN {
     with 'Operation';
     sub tag { return 'DELETE' }
     has 'file' => (is => 'ro', isa => 'Path::Class::File', required => 1);
+    sub match {
+        my ($self, %attr) = @_;
+        $attr{DELETE}->($self);
+    }
     
     package Copy;
     use namespace::autoclean;
@@ -174,6 +130,10 @@ BEGIN {
     sub tag { return 'COPY' }
     has 'src' => (is => 'ro', isa => 'Path::Class::File', required => 1);
     has 'dst' => (is => 'ro', isa => 'Path::Class::File', required => 1);
+    sub match {
+        my ($self, %attr) = @_;
+        $attr{COPY}->($self);
+    }
 
     package Synchronize;
     use namespace::autoclean;
