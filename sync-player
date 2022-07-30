@@ -109,7 +109,6 @@ if ( not $force ) {
 ### Classes
 BEGIN {
     package Delete;
-    use namespace::autoclean;
     use Moose;
     has 'file' => (is => 'ro', isa => 'Path::Class::File', required => 1);
     sub match {
@@ -118,7 +117,6 @@ BEGIN {
     }
     
     package Copy;
-    use namespace::autoclean;
     use Moose;
     has 'src' => (is => 'ro', isa => 'Path::Class::File', required => 1);
     has 'dst' => (is => 'ro', isa => 'Path::Class::File', required => 1);
@@ -128,11 +126,9 @@ BEGIN {
     }
 
     package Synchronize;
-    use namespace::autoclean;
     use Moose;
     use Path::Class;
-    use List::Util qw(any);
-    use Types::Standard qw(InstanceOf Bool);
+    use Types::Standard qw(Bool);
     use Type::Params qw(compile);
     use Moose::Util::TypeConstraints;
 
@@ -249,9 +245,8 @@ BEGIN {
 
     
     package RelativeFolder;
-    use namespace::autoclean;
     use Moose;
-    use Types::Standard qw(Any InstanceOf ArrayRef Dict Int);
+    use Types::Standard qw(InstanceOf ArrayRef Dict Int);
     use Type::Params qw(compile_named);
     
     has 'root' => (
@@ -263,12 +258,7 @@ BEGIN {
     has 'files' => (
         traits   => ['Array'],
         is       => 'ro',
-        isa      =>
-            ArrayRef[
-                Dict[
-                    File => InstanceOf['Path::Class::File'],
-                    Size => Int,
-                ]],
+        isa      => ArrayRef[Dict[File => InstanceOf['Path::Class::File'], Size => Int]],
         required => 1,
         handles  => {
             all_files  => 'elements',
@@ -299,11 +289,4 @@ BEGIN {
         });
     }
 }
-
-
-
-
-
-
-
 
