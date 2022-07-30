@@ -79,7 +79,7 @@ my $ops = reduce {
 
 # Start Program by Summary
 print  "Summary\n";
-printf "Copies:    %d\n", $amount->{Copies};
+printf "Copies:    %d\n",   $amount->{Copies};
 printf "Deletions: %d\n\n", $amount->{Deletions};
 
 for my $op ( @changes ) {
@@ -93,7 +93,7 @@ for my $op ( @changes ) {
         DELETE => sub {
             printf "%s %s\n", red("Deleting"), blue($op->file);
             if ( $force ) {
-                $op->file->remove or warn "$!\n";
+                $op->file->remove or warn "WARNING: $!\n";
             }
         },
     );
@@ -108,18 +108,9 @@ if ( not $force ) {
 
 ### Classes
 BEGIN {
-    package Operation;
-    use namespace::autoclean;
-    use Moose::Role;
-    requires 'tag';
-    sub is_copy   { $_[0]->tag eq 'COPY'   }
-    sub is_delete { $_[0]->tag eq 'DELETE' }
-
     package Delete;
     use namespace::autoclean;
     use Moose;
-    with 'Operation';
-    sub tag { return 'DELETE' }
     has 'file' => (is => 'ro', isa => 'Path::Class::File', required => 1);
     sub match {
         my ($self, %attr) = @_;
@@ -129,8 +120,6 @@ BEGIN {
     package Copy;
     use namespace::autoclean;
     use Moose;
-    with 'Operation';
-    sub tag { return 'COPY' }
     has 'src' => (is => 'ro', isa => 'Path::Class::File', required => 1);
     has 'dst' => (is => 'ro', isa => 'Path::Class::File', required => 1);
     sub match {
@@ -173,8 +162,7 @@ BEGIN {
                         push @$content, {
                             File =>    $x,
                             Size => -s $x,
-                        };
-                        
+                        };                        
                     }
                     # otherwise traverse recursively
                     else {
