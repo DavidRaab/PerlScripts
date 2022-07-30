@@ -31,3 +31,8 @@ This one does the job with ffmpeg, in parallel.
 
 When you have many files and you want to put a number before them to order all files.
 Then you can use this scripts. It interactively asks you for the number and every file.
+
+### sync-player
+
+A synchronization script I use to sync my music player with my music library
+on my PC.

@@ -43,7 +43,7 @@ sub sync {
 
 # Folders to Synchronize
 my @synchronize = (
-    d2("2018"), d2("2019"), d2("2020"), d2("2021"), d2("2022-2"), d2("2wei"), d2("8 Graves"), 
+    d2("2019"), d2("2020"), d2("2021"), d2("2022-1"), d2("2022-2"), d2("2wei"), d2("8 Graves"), 
     d2("Adele"), d2("Apashe"),
     d2("Best of Yiruma"),
     d2("Daft Punk"), d2("Dub Fx"),
@@ -87,11 +87,15 @@ for my $op ( @changes ) {
     $op->match(
         COPY => sub {
             printf "%s %s => %s\n", red("Copying"), blue($op->src), cyan($op->dst);
-            fcopy($op->src, $op->dst) if $force;
+            if ( $force ) {
+                fcopy($op->src, $op->dst) or warn "WARNING: $!\n";
+            }
         },
         DELETE => sub {
             printf "%s %s\n", red("Deleting"), blue($op->file);
-            $op->file->remove if $force;
+            if ( $force ) {
+                $op->file->remove or warn "$!\n";
+            }
         },
     );
 }
