@@ -9,52 +9,20 @@ use Data::Printer;
 use Path::Class qw(file dir);
 use File::Copy::Recursive qw(fcopy pathmk);
 use List::Util qw(reduce);
+require SyncConfig;
 use Getopt::Long;
 
 # Todo:
-# * Configuration to a file
-# * Single files instead of directories
+# * Include/Exclude in Config
+# * Regex Pattern Matching in File Config
 
 my $force = 0;
 GetOptions(
     "f|force" => \$force,
 ) or die "Error in command line arguments\n";
 
-# Helper Functions to create data-structure
-sub sync {
-    my ( $destination ) = @_;
-    $destination = dir($destination);
-    
-    my $music = dir("/mnt/daten/Musik");
-    return sub {
-        my ( $folder, %attr ) = @_;
-        my $recursive = $attr{Recursive} // 1;
-        return Synchronize->new(
-            source      => $music->subdir($folder),
-            destination => $destination->subdir($folder),
-            recursive   => $recursive,
-        );
-    }
-}
-
-*d2 = sync("/media/david/D2/MUSIC");
-*sd = sync("/media/david/A770-7A18");
-
-# Folders to Synchronize
-my @synchronize = (
-    d2("2019"), d2("2020"), d2("2021"), d2("2022-1"), d2("2022-2"), d2("2wei"), d2("8 Graves"), 
-    d2("Adele"), d2("Apashe"),
-    d2("Best of Yiruma"),
-    d2("Daft Punk"), d2("Dub Fx"),
-    d2("Enigma"), d2("E Nomine"), d2("Enya/Very Best of Enya"),
-    d2("Foo Fighters"),
-    d2("Juno Reactor"),
-    d2("Games", Recursive => 0),
-    sd("Keep Calm And Feel The Reggae"),
-);
-
 # All changes
-my @changes = map { $_->diff } @synchronize;
+my @changes = map { $_->diff } SyncConfig::config();
 
 # get count of each operation
 my $amount = reduce {
@@ -128,62 +96,90 @@ BEGIN {
     package Synchronize;
     use Moose;
     use Path::Class;
-    use Types::Standard qw(Bool);
+    use Types::Standard qw(Enum InstanceOf ArrayRef Str);
     use Type::Params qw(compile);
-
-    has 'source'      => ( is => 'ro', isa => 'Path::Class::Dir', required => 1 );
-    has 'destination' => ( is => 'ro', isa => 'Path::Class::Dir', required => 1 );
-    has 'recursive'   => ( is => 'ro', isa => Bool, default => 1 );
+    use Moose::Util::TypeConstraints;
+    
+    subtype 'SyncMethods', as Enum[qw/Flat Recursive/];
+    subtype 'SyncFiles',   as ArrayRef[Str];
+    
+    has 'source'      => ( is => 'ro', required => 1, isa => 'Path::Class::Dir' );
+    has 'destination' => ( is => 'ro', required => 1, isa => 'Path::Class::Dir' );
+    has 'method'      => ( is => 'ro', required => 1, isa => 'SyncMethods | SyncFiles' );
     
     # returns full path of every file from a directory
-    my sub list_files {
-        my ($dir, %attr) = @_;
-        my $recursive = $attr{Recursive} // 1;
-        
+    my sub recursive_files {
+        my ($dir) = @_;
         my $content = [];
         if ( -d $dir ) {
-            if ( $recursive ) {
-                $content = $dir->traverse(sub {
-                    my ($x, $cont, $content) = @_;
-                
-                    # if file, push to content
-                    if ( -f $x ) {
-                        push @$content, {
-                            File =>    $x,
-                            Size => -s $x,
-                        };                        
-                    }
-                    # otherwise traverse recursively
-                    else {
-                        $cont->($content);
-                    }
-                
-                    return $content;
-                }, []);
+            $content = $dir->traverse(sub {
+                my ($x, $cont, $content) = @_;
+            
+                # if file, push to content
+                if ( -f $x ) {
+                    push @$content, {
+                        File =>    $x,
+                        Size => -s $x,
+                    };
+                }
+                # otherwise traverse recursively
+                else {
+                    $cont->($content);
+                }
+            
+                return $content;
+            }, []);
+        }
+        return $content;
+    }
+    
+    my sub flat_files {
+        my ( $dir ) = @_;
+        my @content;
+        if ( -d $dir ) {
+            while ( my $x = $dir->next ) {
+                push @content, {
+                    File =>    $x,
+                    Size => -s $x,
+                } if -f $x;
             }
-            else {
-                while ( my $x = $dir->next ) {
-                    if ( -f $x ) {
-                        push @$content, {
-                            File =>    $x,
-                            Size => -s $x,
-                        };
+        }
+        return \@content;
+    }
+    
+    my sub files_files {
+        my ( $dir, $files ) = @_;
+        my @content;
+        if ( -d $dir ) {
+            for my $file ( @$files ) {
+                my $file = $dir->file($file);
+                if ( -f $file ) {
+                    push @content, {
+                        File =>    $file,
+                        Size => -s $file,
                     }
                 }
             }
         }
-        
-        return $content;
+        return \@content;
     }
 
     sub source_files {
         my ( $self ) = @_;
-        return list_files($self->source, Recursive => $self->recursive);
+        if ( $self->method eq 'Flat' ) {
+            return flat_files($self->source);
+        }
+        elsif ( $self->method eq 'Recursive' ) {
+            return recursive_files($self->source);
+        }
+        else {
+            return files_files($self->source, $self->method);
+        }
     }
 
     sub destination_files {
         my ( $self ) = @_;
-        return list_files($self->destination, Recursive => $self->recursive);
+        return recursive_files($self->destination);
     }
 
     sub diff {
