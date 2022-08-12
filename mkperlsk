@@ -11,6 +11,8 @@ for my $file ( @ARGV ) {
     print {$fh} "#!/usr/bin/env perl\n";
     print {$fh} "use strict;\n";
     print {$fh} "use warnings;\n";
+    print {$fh} "use utf8;\n";
+    print {$fh} "use open ':std', ':encoding(UTF-8)';\n";
     print {$fh} "use v5.32;\n";
     print {$fh} "use Data::Printer;\n\n";
     
