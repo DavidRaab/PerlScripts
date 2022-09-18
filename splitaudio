@@ -15,9 +15,9 @@ die "Error: Audio file [$audio] does not exists.\n" if not -e $audio;
 die "Error: Split file [$txt] does not exists.\n"   if not -e $txt;
 
 # 00:12:33 Artist - Title
-my $format1 = qr/\A \[? (\d\d:\d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
+my $format1 = qr/\A \[? ( (?:\d\d\:)? \d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
 # 00:12:33 Title
-my $format2 = qr/\A \[? (\d\d:\d\d:\d\d) \]? (?:\s+-)? \s+ (.+) \z/xms;
+my $format2 = qr/\A \[? ( (?:\d\d\:)? \d\d:\d\d) \]? (?:\s+-)? \s+ (.+) \z/xms;
 
 # Read Songs File Format
 my @songs;
@@ -73,7 +73,7 @@ print "Finished!\n";
 # Mandatory: Audio, Start, Track, Title
 # Optional:  Stop, Artist
 my $time_format;
-BEGIN { $time_format = qr/\A(\d\d:\d\d:\d\d)\z/xms; }
+BEGIN { $time_format = qr/\A( (?:\d\d:)? \d\d:\d\d)\z/xms; }
 sub convert {
     my %arg = @_;
     my $audio    = $arg{Audio} // die "Audio not defined!\n";
@@ -87,7 +87,7 @@ sub convert {
         ? sprintf("%02d. %s - %s.ogg", $track, $arg{Artist}, $arg{Title})
         : sprintf("%02d. %s.ogg",      $track, $arg{Title});
     
-    if ( exists $arg{Stop} && defined $arg{Stop} && $arg{Stop} =~ m/\A\d\d:\d\d:\d\d\z/ ) {
+    if ( exists $arg{Stop} && defined $arg{Stop} && $arg{Stop} =~ $time_format ) {
         my $out = capture sub {
             system(
                 'ffmpeg',
