@@ -29,9 +29,11 @@ my @synchronize = (
     d2("Best of Yiruma"),
     d2("Daft Punk"), d2("Dub Fx"),
     d2("Enigma"), d2("E Nomine"), d2("Enya/Very Best of Enya"),
-    d2("Foo Fighters"),
-    d2("Juno Reactor"),
+    d2("Foo Fighters"), d2("Gorillaz"), d2("Hidden Citizens"), d2("Infected Mushroom"), d2("INZO"),
+    sd("Juno Reactor"), d2("Justice"), d2("Linkin Park"),
+    d2("Massive Attack"), d2("Milow"), d2("Moby"), d2("Nintendo"),
     d2("Games" => ["Wasteland 3 Radio Songs.mp3", "Fallout 4 - All Magnolia Songs.mp3", "Transistor Original Soundtrack.mp3", "Doom Eternal.mp3"]),
+#    d2("Games/Bastion Original Soundtrack"),  TODO: Correct Handling
     sd("Keep Calm And Feel The Reggae"),
 );
 

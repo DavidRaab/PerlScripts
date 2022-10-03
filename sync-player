@@ -15,6 +15,8 @@ use Getopt::Long;
 # Todo:
 # * Include/Exclude in Config
 # * Regex Pattern Matching in File Config
+# * Copy Amount / Size Usage
+# * Term::ProgressBar
 
 my $force = 0;
 GetOptions(
