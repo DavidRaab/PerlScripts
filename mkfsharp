@@ -1,0 +1,12 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+for my $file ( @ARGV ) {
+    next if -e $file;
+    
+    open my $fh, '>', $file or die "Cannot open [$file]: $!\n";
+    print {$fh} "#!/usr/bin/env -S dotnet fsi\n\n";
+    chmod 0770, $file;
+    close $fh;
+}
