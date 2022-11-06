@@ -1,22 +1,12 @@
 #!/usr/bin/env perl
-use strict;
+use v5.32;
 use warnings;
-use v5.10;
+use feature 'signatures';
+no warnings 'experimental::signatures';
 use Carp qw(croak);
-use Term::ANSIColor qw(colored);
-
-# Ansi Colors Helper
-sub create_colored {
-    my ($color) = @_;
-    return sub {
-        my ($str) = @_;
-        return colored([$color], $str);
-    }
-}
-
-*blue = create_colored("blue");
-*red  = create_colored("red");
-*cyan = create_colored("cyan");
+use FindBin;
+use lib "$FindBin::RealBin";
+use Color qw(red blue cyan);
 
 # Program info
 say 'Call: ' . red('prefix *.mp3');
@@ -33,19 +23,19 @@ for my $file (@ARGV) {
 
     # Show User the file to Change
     printf "File: %s\n", blue($file);
-    
+
     # Warn user if file has prefix
     if ( check_has_prefix($file) ) {
         print red("Warning: ") . "Prefix already avaible. Enter Number to overwrite or skip\n";
     }
-    
+
     ASKINPUT:
     my $input = to_input(ask("Prefix: "));
     match_input($input, {
         'number'  => sub {
             my ($value) = @_;
             my $new_filename = new_filename($value, $file);
-        
+
             # If new-file already exists, we skip
             if ( -e $new_filename ) {
                 printf "Error: No renaming; File already exists: %s\n", $new_filename;
@@ -66,28 +56,23 @@ for my $file (@ARGV) {
 }
 
 
-sub ask {
-    my ($message) = @_;
+sub ask ($message) {
     print $message;
     my $input = <STDIN>;
     chomp $input;
     return $input;
 }
 
-sub check_has_prefix {
-    my ($str) = @_;
+sub check_has_prefix ($str) {
     return $str =~ m/^\d+\.\s+/ ? 1 : 0;
 }
 
-sub remove_prefix {
-    my ($str) = @_;
+sub remove_prefix ($str) {
     $str =~ s/^\d+\.\s+//;
     return $str;
 }
 
-sub new_filename {
-    my ($number, $file) = @_;
-    
+sub new_filename ($number, $file) {
     return
         check_has_prefix($file)
         ? sprintf("%02d. %s", $number, remove_prefix($file))
@@ -105,9 +90,7 @@ sub new_filename {
 # ["skip"]
 # ["quit"]
 # ["invalid"]
-sub to_input {
-    my ($prefix) = @_;
-    
+sub to_input ($prefix) {
     return check_is_number($prefix) ? ["number", sprintf("%02d. ", $prefix)]
     :      check_is_skip($prefix)   ? ["skip"]
     :      check_is_quit($prefix)   ? ["quit"]
@@ -115,45 +98,40 @@ sub to_input {
     ;
 }
 
-sub check_is_number {
-    my ($input) = @_;
+sub check_is_number ($input) {
     return $input =~ m/^\d+$/ ? 1 : 0;
 }
 
-sub check_is_skip {
-    my ($input) = @_;
+sub check_is_skip ($input) {
     return $input =~ m/^(s|sk|ski|skip)$/i ? 1 : 0;
 }
 
-sub check_is_quit {
-    my ($input) = @_;
+sub check_is_quit ($input) {
     return $input =~ m/^(q|qu|qui|quit)$/xi ? 1 : 0;
 }
 
 
 # Return type of input data-structure
-sub input_type {
-    my ($input) = @_;
+sub input_type ($input) {
     return $input->[0];
 }
 
 # Return additional values of each type
-sub input_values {
-    my ($input) = @_;
-    my @array   = splice(@$input, 1);
+sub input_values ($input) {
+    my $length = $input->$#*;
+    my @array  = $input->@[1..$length];
     return wantarray ? @array : \@array;
 }
 
 # Match function to check all cases if input data-structure
-sub match_input {
-    my ($input, $args) = @_;
+sub match_input ($input, $args) {
     croak "Need Hash-Ref as second argument\n"     if ref $args            ne 'HASH';
     croak "Need 'number' as function argument"     if ref $args->{number}  ne 'CODE';
     croak "Need 'skip' as function argument\n"     if ref $args->{skip}    ne 'CODE';
     croak "Need 'quit' as function argument\n"     if ref $args->{quit}    ne 'CODE';
     croak "Need 'invalid' as function argument\n"  if ref $args->{invalid} ne 'CODE';
-    
+
     my $type   = input_type($input);
     my @values = input_values($input);
-    $args->{$type}->(@values);
+    $args->{$type}(@values);
 }

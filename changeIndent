@@ -1,7 +1,8 @@
 #!/usr/bin/env perl
-use strict;
-use warnings;
 use v5.32;
+use warnings;
+use feature 'signatures';
+no warnings 'experimental::signatures';
 use FindBin qw($Script);
 use Getopt::Long;
 
@@ -33,9 +34,7 @@ for my $file ( @ARGV ) {
     changeIndent($file);
 }
 
-sub changeIndent {
-    my ( $file ) = @_;
-
+sub changeIndent ($file) {
     # Open file for reading
     open my $fh, '<', $file
         or die (sprintf "Error: Cannot open file [%s]: $!\n", $file);

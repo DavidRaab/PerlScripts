@@ -1,0 +1,10 @@
+#!/usr/bin/env perl
+use v5.32;
+use warnings;
+#use open ':std', ':encoding(UTF-8)';
+
+for my $file ( @ARGV ) {
+    my $orig = $file;
+    my $new  = $file =~ s/\. [^\.]+ \z/.ogg/xr;
+    system('ffmpeg', '-i', $orig, '-q:a', 8, $new);
+}

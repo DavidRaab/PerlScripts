@@ -1,15 +1,15 @@
 #!/usr/bin/env perl
-use strict;
+use v5.32;
 use warnings;
-use v5.10;
+use feature 'signatures';
+no warnings 'experimental::signatures';
 use FindBin;
 use lib "$FindBin::RealBin";
+use Color qw(red cyan);
 use IPC::Run qw(run);
 use Data::Dump qw(dd);
 use Carp qw(croak);
 use Getopt::Long;
-use Color qw(red cyan);
-use Term::ANSIColor qw(colored);
 use JSON qw(decode_json);
 use URI;
 use URI::QueryParam;
@@ -21,7 +21,7 @@ my $ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:96.0) Gecko/20100101 Fire
 # Path to youtube-dl
 my $yt = "yt-dlp";
 
-## 
+##
 # CLI Options
 my ($name, $mp3, $ogg) = ("", 0, 1);
 GetOptions(
@@ -43,7 +43,7 @@ if ( $name ) {
 ##
 # Download file
 my ($in, $out, $err);
-run [$yt, '--user-agent', $ua, qw(--quiet --continue --ignore-errors --id -f bestaudio --print-json), $uri], 
+run [$yt, '--user-agent', $ua, qw(--quiet --continue --ignore-errors --id -f bestaudio --print-json), $uri],
     \$in, \$out, \$err;
 
 # read Json
@@ -63,10 +63,9 @@ unlink $source;
 print red("Created: "), cyan($info->{filename}), "\n";
 
 
-sub getTargetInformation {
-    my ($json, $targetFilename, $mp3Flag, $oggFlag) = @_;
+sub getTargetInformation ($json, $targetFilename, $mp3Flag, $oggFlag) {
     my $target = $mp3Flag ? "mp3" : "ogg";
-        
+
     if ( $targetFilename ) {
         return {
             target   => $target,
@@ -82,14 +81,13 @@ sub getTargetInformation {
     }
 }
 
-sub uri_params_delete_except {
-    my ($u, @except) = @_;
+sub uri_params_delete_except ($u, @except) {
     my $uri = $u->clone;
-    
+
     my %keep = map { $_ => 1 } @except;
     for my $key ( $uri->query_param ) {
         $uri->query_param_delete($key) if not $keep{$key};
     }
-    
+
     return $uri;
 }

@@ -1,17 +1,16 @@
 #!/usr/bin/env perl
-use strict;
-use warnings;
 use v5.32;
+use warnings;
 use List::MoreUtils qw(any);
 use Text::Table;
 
 # List of FileSystems not to Show
-my @filtered_fs = 
+my @filtered_fs =
     qw/autofs configfs devpts devtmpfs securityfs tmpfs
        efivarfs debugfs bpf cgroup2 pstore sysfs tracefs
        fuse.gvfsd-fuse fusectl hugetlbfs mqueue proc fuse.portal/;
 
-my @out = 
+my @out =
   sort {
     $a->[0] cmp $b->[0]
     || $a->[1] cmp $b->[1]
@@ -41,15 +40,15 @@ filesystem to only show real HDD/SDD Partitions.
 =head1 Output
 
 =begin text
-    
+
     Example on my machine:
 
-    DEV                 MOUNTPOINT         TYPE       
-    /dev/mapper/vg-home /home              ext4       
-    /dev/mapper/vg-root /                  ext4       
-    /dev/sda1           /mnt/windows       fuseblk    
-    /dev/sdb1           /boot/efi          vfat       
-    /dev/sdc2           /mnt/filme         fuseblk    
-    /dev/sdd3           /mnt/daten         fuseblk    
+    DEV                 MOUNTPOINT         TYPE
+    /dev/mapper/vg-home /home              ext4
+    /dev/mapper/vg-root /                  ext4
+    /dev/sda1           /mnt/windows       fuseblk
+    /dev/sdb1           /boot/efi          vfat
+    /dev/sdc2           /mnt/filme         fuseblk
+    /dev/sdd3           /mnt/daten         fuseblk
 
 =end text

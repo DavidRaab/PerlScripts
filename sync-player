@@ -1,7 +1,6 @@
 #!/usr/bin/env perl
-use strict;
-use warnings;
 use v5.32;
+use warnings;
 use FindBin;
 use lib "$FindBin::RealBin";
 use Color qw(red blue cyan);
@@ -85,7 +84,7 @@ BEGIN {
         my ($self, %attr) = @_;
         $attr{DELETE}->($self);
     }
-    
+
     package Copy;
     use Moose;
     has 'src' => (is => 'ro', isa => 'Path::Class::File', required => 1);
@@ -97,26 +96,27 @@ BEGIN {
 
     package Synchronize;
     use Moose;
+    use feature 'signatures';
+    no warnings 'experimental::signatures';
     use Path::Class;
     use Types::Standard qw(Enum InstanceOf ArrayRef Str);
     use Type::Params qw(compile);
     use Moose::Util::TypeConstraints;
-    
+
     subtype 'SyncMethods', as Enum[qw/Flat Recursive/];
     subtype 'SyncFiles',   as ArrayRef[Str];
-    
+
     has 'source'      => ( is => 'ro', required => 1, isa => 'Path::Class::Dir' );
     has 'destination' => ( is => 'ro', required => 1, isa => 'Path::Class::Dir' );
     has 'method'      => ( is => 'ro', required => 1, isa => 'SyncMethods | SyncFiles' );
-    
+
     # returns full path of every file from a directory
-    my sub recursive_files {
-        my ($dir) = @_;
+    state sub recursive_files ($dir) {
         my $content = [];
         if ( -d $dir ) {
             $content = $dir->traverse(sub {
                 my ($x, $cont, $content) = @_;
-            
+
                 # if file, push to content
                 if ( -f $x ) {
                     push @$content, {
@@ -128,15 +128,14 @@ BEGIN {
                 else {
                     $cont->($content);
                 }
-            
+
                 return $content;
             }, []);
         }
         return $content;
     }
-    
-    my sub flat_files {
-        my ( $dir ) = @_;
+
+    state sub flat_files ($dir) {
         my @content;
         if ( -d $dir ) {
             while ( my $x = $dir->next ) {
@@ -148,12 +147,11 @@ BEGIN {
         }
         return \@content;
     }
-    
-    my sub files_files {
-        my ( $dir, $files ) = @_;
+
+    state sub files_files ($dir, $files) {
         my @content;
         if ( -d $dir ) {
-            for my $file ( @$files ) {
+            for my $file ( $files->@* ) {
                 my $file = $dir->file($file);
                 if ( -f $file ) {
                     push @content, {
@@ -166,8 +164,7 @@ BEGIN {
         return \@content;
     }
 
-    sub source_files {
-        my ( $self ) = @_;
+    sub source_files ($self) {
         if ( $self->method eq 'Flat' ) {
             return flat_files($self->source);
         }
@@ -179,17 +176,14 @@ BEGIN {
         }
     }
 
-    sub destination_files {
-        my ( $self ) = @_;
+    sub destination_files ($self) {
         return recursive_files($self->destination);
     }
 
-    sub diff {
-        my ( $self ) = @_;
-           
+    sub diff ($self) {
         # Changes operation
         my @changes;
-        
+
         # Fetch file list only once
         my $src = RelativeFolder->from_absolute(
             root  => $self->source,
@@ -199,14 +193,14 @@ BEGIN {
             root  => $self->destination,
             files => $self->destination_files,
         );
-        
+
         # Which files should be deleted from DST
         for my $file ( $dst->all_files ) {
             if ( not defined $src->find_file($file->{File}) ) {
                 push @changes, Delete->new(file => $dst->root->file($file->{File}));
             }
         }
-        
+
         # Look which files should be copied from SRC to DST
         for my $src_file ( $src->all_files ) {
             my $file = $src_file->{File};
@@ -215,10 +209,10 @@ BEGIN {
                 src => $src->root->file($file),
                 dst => $dst->root->file($file),
             );
-        
+
             # Look if file exists in dst
             my $dst_file = $dst->find_file($file);
-            # if file exists 
+            # if file exists
             if ( defined $dst_file ) {
                 # but file size is different, then copy
                 if ( $dst_file->{Size} != $size ) {
@@ -230,22 +224,22 @@ BEGIN {
                 push @changes, $copy;
             }
         }
-        
+
         return wantarray ? @changes : \@changes;
     }
 
-    
+
     package RelativeFolder;
     use Moose;
     use Types::Standard qw(InstanceOf ArrayRef Dict Int);
     use Type::Params qw(compile_named);
-    
+
     has 'root' => (
         is       => 'ro',
         isa      => InstanceOf['Path::Class::Dir'],
         required => 1,
     );
-    
+
     has 'files' => (
         traits   => ['Array'],
         is       => 'ro',
@@ -256,12 +250,12 @@ BEGIN {
             first_file => 'first',
         }
     );
-    
+
     sub find_file {
         my ( $self, $file ) = @_;
         return $self->first_file(sub { $_->{File} eq $file });
     }
-    
+
     # Class Method
     sub from_absolute {
         state $check = compile_named(
@@ -270,7 +264,7 @@ BEGIN {
             files => ArrayRef[Dict[File => InstanceOf['Path::Class::File'], Size => Int]],
         );
         my ( $class, $arg ) = &$check;
-        
+
         return RelativeFolder->new({
             root  => $arg->{root},
             files => [ map +{
