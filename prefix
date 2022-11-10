@@ -26,14 +26,13 @@ for my $file (@ARGV) {
 
     # Warn user if file has prefix
     if ( check_has_prefix($file) ) {
-        print red("Warning: ") . "Prefix already avaible. Enter Number to overwrite or skip\n";
+        print red("Warning: ") . "Prefix already available. Enter Number to overwrite or skip\n";
     }
 
     ASKINPUT:
     my $input = to_input(ask("Prefix: "));
     match_input($input, {
-        'number'  => sub {
-            my ($value) = @_;
+        'number'  => sub ($value) {
             my $new_filename = new_filename($value, $file);
 
             # If new-file already exists, we skip
