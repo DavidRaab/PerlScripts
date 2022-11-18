@@ -16,9 +16,9 @@ die "Error: Audio file [$audio] does not exists.\n" if not -e $audio;
 die "Error: Split file [$txt] does not exists.\n"   if not -e $txt;
 
 # 00:12:33 Artist - Title
-my $format1 = qr/\A \[? ( (?:\d\d\:)? \d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
+my $format1 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
 # 00:12:33 Title
-my $format2 = qr/\A \[? ( (?:\d\d\:)? \d\d:\d\d) \]? (?:\s+-)? \s+ (.+) \z/xms;
+my $format2 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ (.+) \z/xms;
 
 # Read Songs File Format
 my @songs;
