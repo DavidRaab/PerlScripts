@@ -10,6 +10,7 @@ use File::Copy::Recursive qw(fcopy pathmk);
 use List::Util qw(reduce);
 require SyncConfig;
 use Getopt::Long;
+no warnings 'experimental::signatures';
 
 # Todo:
 # * Include/Exclude in Config
@@ -97,11 +98,11 @@ BEGIN {
     package Synchronize;
     use Moose;
     use feature 'signatures';
-    no warnings 'experimental::signatures';
     use Path::Class;
     use Types::Standard qw(Enum InstanceOf ArrayRef Str);
     use Type::Params qw(compile);
     use Moose::Util::TypeConstraints;
+    no warnings 'experimental::signatures';
 
     subtype 'SyncMethods', as Enum[qw/Flat Recursive/];
     subtype 'SyncFiles',   as ArrayRef[Str];
