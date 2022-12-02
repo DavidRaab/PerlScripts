@@ -1,4 +1,39 @@
 #!/usr/bin/env perl
+
+package MyApp::Args;
+use v5.32;
+use Moose;
+with 'MooseX::Getopt';
+
+has 'info' => (
+    metaclass     => 'Getopt',
+    cmd_aliases   => ['i'],
+    is            => 'rw',
+    isa           => 'Bool',
+    required      => 0,
+    documentation => 'Prints parsing information of the songs text file.',
+);
+
+has 'audio' => (
+    metaclass     => 'Getopt',
+    cmd_aliases   => ['a'],
+    is            => 'rw',
+    isa           => 'Str',
+    required      => 1,
+    documentation => 'Audio file to be splitted.',
+);
+
+has 'split' => (
+    metaclass     => 'Getopt',
+    cmd_aliases   => ['s'],
+    is            => 'rw',
+    isa           => 'Str',
+    required      => 1,
+    documentation => 'File containing information how to split audio-file.',
+);
+
+
+package main;
 use v5.32;
 use warnings;
 use feature 'signatures';
@@ -8,12 +43,10 @@ use Parallel::ForkManager;
 use Data::Dump qw(dump);
 use Capture::Tiny qw(capture);
 
-my $audio = $ARGV[0];
-my $txt   = $ARGV[1];
+my $args = MyApp::Args->new_with_options();
 
-die "Usage: splitaudio audio.ogg audio.txt\n"       if @ARGV == 0;
-die "Error: Audio file [$audio] does not exists.\n" if not -e $audio;
-die "Error: Split file [$txt] does not exists.\n"   if not -e $txt;
+die (sprintf "Error: Audio file [%s] does not exists.\n", $args->audio) if not -e $args->audio;
+die (sprintf "Error: Split file [%s] does not exists.\n", $args->split) if not -e $args->split;
 
 # 00:12:33 Artist - Title
 my $format1 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
@@ -22,7 +55,7 @@ my $format2 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ (.+) \z/xms;
 
 # Read Songs File Format
 my @songs;
-my @txt = read_file($txt, chomp => 1);
+my @txt = read_file($args->split, chomp => 1);
 
 for my $line ( @txt ) {
     if ( $line =~ $format1 ) {
@@ -46,30 +79,44 @@ for ( my $i=1; $i < @txt; $i++ ) {
     }
 }
 
-# Convert Audio Files
-my $pm = Parallel::ForkManager->new(4);
-SONG:
-for (my $i=0; $i < @songs; $i++ ) {
-    my $pid = $pm->start and next SONG;
-
-    # Child Process
-    my $song  = $songs[$i];
-    my $track = $i + 1;
-
-    convert(
-        Audio  => $audio,
-        Start  => $song->{Start},
-        Stop   => $song->{Stop},
-        Track  => $track,
-        Artist => $song->{Artist},
-        Title  => $song->{Title},
-    );
-
-    # Exit Child
-    $pm->finish;
+# If user requested informtion
+if ( $args->info ) {
+    my $num = 1;
+    for my $song ( @songs ) {
+        if ( exists $song->{Stop} ) {
+            printf "%02d: %s - %s - %s\n", $num++, $song->{Start}, $song->{Stop}, $song->{Title};
+        }
+        else {
+            printf "%02d: %s - EOF - %s\n", $num++, $song->{Start}, $song->{Title};
+        }
+    }
 }
+# otherwise convert Audio Files
+else {
+    my $pm = Parallel::ForkManager->new(4);
+    SONG:
+    for (my $i=0; $i < @songs; $i++ ) {
+        my $pid = $pm->start and next SONG;
 
-print "Finished!\n";
+        # Child Process
+        my $song  = $songs[$i];
+        my $track = $i + 1;
+
+        convert(
+            Audio  => $args->audio,
+            Start  => $song->{Start},
+            Stop   => $song->{Stop},
+            Track  => $track,
+            Artist => $song->{Artist},
+            Title  => $song->{Title},
+        );
+
+        # Exit Child
+        $pm->finish;
+    }
+
+    print "Finished!\n";
+}
 
 # Mandatory: Audio, Start, Track, Title
 # Optional:  Stop, Artist
