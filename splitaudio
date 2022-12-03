@@ -1,39 +1,4 @@
 #!/usr/bin/env perl
-
-package MyApp::Args;
-use v5.32;
-use Moose;
-with 'MooseX::Getopt';
-
-has 'info' => (
-    metaclass     => 'Getopt',
-    cmd_aliases   => ['i'],
-    is            => 'rw',
-    isa           => 'Bool',
-    required      => 0,
-    documentation => 'Prints parsing information of the songs text file.',
-);
-
-has 'audio' => (
-    metaclass     => 'Getopt',
-    cmd_aliases   => ['a'],
-    is            => 'rw',
-    isa           => 'Str',
-    required      => 1,
-    documentation => 'Audio file to be splitted.',
-);
-
-has 'split' => (
-    metaclass     => 'Getopt',
-    cmd_aliases   => ['s'],
-    is            => 'rw',
-    isa           => 'Str',
-    required      => 1,
-    documentation => 'File containing information how to split audio-file.',
-);
-
-
-package main;
 use v5.32;
 use warnings;
 use feature 'signatures';
@@ -42,11 +7,23 @@ use File::Slurp qw(read_file);
 use Parallel::ForkManager;
 use Data::Dump qw(dump);
 use Capture::Tiny qw(capture);
+use Getopt::Long::Descriptive;
 
-my $args = MyApp::Args->new_with_options();
+my ($opt, $usage) = describe_options(
+    'Usage: splitaudio -a audio-file -s split-file',
+    ['audio|a=s', 'The audio file to be processed',                           { required => 1 }],
+    ['split|s=s', 'The split file containing timesteps and song information', { required => 1 }],
+    ['info|i',    'Show what will be done, without action'                                      ],
+    ['help|h',    'Print this message',                                       { shortcircuit => 1 }],
+);
 
-die (sprintf "Error: Audio file [%s] does not exists.\n", $args->audio) if not -e $args->audio;
-die (sprintf "Error: Split file [%s] does not exists.\n", $args->split) if not -e $args->split;
+if ( $opt->help ) {
+    print $usage->text;
+    exit;
+}
+
+die (sprintf "Error: Audio file [%s] does not exists.\n", $opt->audio) if not -e $opt->audio;
+die (sprintf "Error: Split file [%s] does not exists.\n", $opt->split) if not -e $opt->split;
 
 # 00:12:33 Artist - Title
 my $format1 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
@@ -55,7 +32,7 @@ my $format2 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ (.+) \z/xms;
 
 # Read Songs File Format
 my @songs;
-my @txt = read_file($args->split, chomp => 1);
+my @txt = read_file($opt->split, chomp => 1);
 
 for my $line ( @txt ) {
     if ( $line =~ $format1 ) {
@@ -80,7 +57,7 @@ for ( my $i=1; $i < @txt; $i++ ) {
 }
 
 # If user requested informtion
-if ( $args->info ) {
+if ( $opt->info ) {
     my $num = 1;
     for my $song ( @songs ) {
         if ( exists $song->{Stop} ) {
@@ -103,7 +80,7 @@ else {
         my $track = $i + 1;
 
         convert(
-            Audio  => $args->audio,
+            Audio  => $opt->audio,
             Start  => $song->{Start},
             Stop   => $song->{Stop},
             Track  => $track,
