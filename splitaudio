@@ -4,26 +4,34 @@ use warnings;
 use feature 'signatures';
 no warnings 'experimental::signatures';
 use File::Slurp qw(read_file);
-use Parallel::ForkManager;
-use Data::Dump qw(dump);
 use Capture::Tiny qw(capture);
 use Getopt::Long::Descriptive;
+use AnyEvent;
+use AnyEvent::Util;
+use Term::ProgressBar;
 
 my ($opt, $usage) = describe_options(
     'Usage: splitaudio -a audio-file -s split-file',
-    ['audio|a=s', 'The audio file to be processed',                           { required => 1 }],
-    ['split|s=s', 'The split file containing timesteps and song information', { required => 1 }],
-    ['info|i',    'Show what will be done, without action'                                      ],
-    ['help|h',    'Print this message',                                       { shortcircuit => 1 }],
+    ['audio|a=s',   'The audio file to be processed',                           { required => 1 }],
+    ['split|s=s',   'The split file containing timesteps and song information', { required => 1 }],
+    ['parallel|p=i','Maximum amount of fork processes',                         { default  => 4 }],
+    ['info|i',    'Show what will be done, without action'                                       ],
+    ['help|h',    'Print this message',                                     { shortcircuit => 1 }],
 );
 
+# show help if --help was specified
 if ( $opt->help ) {
     print $usage->text;
     exit;
 }
 
+# abort if files doesn't exists
 die (sprintf "Error: Audio file [%s] does not exists.\n", $opt->audio) if not -e $opt->audio;
 die (sprintf "Error: Split file [%s] does not exists.\n", $opt->split) if not -e $opt->split;
+
+# set the maximum forked processes
+$AnyEvent::Util::MAX_FORKS = $opt->parallel;
+
 
 # 00:12:33 Artist - Title
 my $format1 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
@@ -70,29 +78,37 @@ if ( $opt->info ) {
 }
 # otherwise convert Audio Files
 else {
-    my $pm = Parallel::ForkManager->new(4);
-    SONG:
+    my $progress = Term::ProgressBar->new({name => "Converting", count => scalar @songs });
+    my $count    = 0;
+
+    my $cv = AnyEvent->condvar;
     for (my $i=0; $i < @songs; $i++ ) {
-        my $pid = $pm->start and next SONG;
+        # This is important as $i is not a lexical scoped variable for every
+        # loop-iteration. When $i is used, then all fork_call reference to the
+        # same $i after the whole loop was running through. So every process
+        # has the last $i
+        my $idx = $i;
 
-        # Child Process
-        my $song  = $songs[$i];
-        my $track = $i + 1;
+        $cv->begin;
+        fork_call {
+            my $song  = $songs[$idx];
+            my $track = $idx + 1;
 
-        convert(
-            Audio  => $opt->audio,
-            Start  => $song->{Start},
-            Stop   => $song->{Stop},
-            Track  => $track,
-            Artist => $song->{Artist},
-            Title  => $song->{Title},
-        );
-
-        # Exit Child
-        $pm->finish;
+            convert(
+                Audio  => $opt->audio,
+                Start  => $song->{Start},
+                Stop   => $song->{Stop},
+                Track  => $track,
+                Artist => $song->{Artist},
+                Title  => $song->{Title},
+            );
+        } sub {
+            $progress->update(++$count);
+            $cv->end;
+        };
     }
-
-    print "Finished!\n";
+    # wait until all processes finish
+    $cv->recv;
 }
 
 # Mandatory: Audio, Start, Track, Title
@@ -106,10 +122,16 @@ sub convert (%arg) {
     my ($track)  = defined $arg{Track} && $arg{Track} =~ m/\A(\d+)\z/;
     my $title    = $arg{Title} // die "Title not defined!\n";
 
+    # the file we want to create
     my $out_file =
         defined $arg{Artist}
         ? sprintf("%02d. %s - %s.ogg", $track, $arg{Artist}, $arg{Title})
         : sprintf("%02d. %s.ogg",      $track, $arg{Title});
+
+    # delete file if already exists
+    if ( -e $out_file ) {
+        return if unlink($out_file) != 1;
+    }
 
     if ( exists $arg{Stop} && defined $arg{Stop} && $arg{Stop} =~ $time_format ) {
         my $out = capture sub {
@@ -134,4 +156,6 @@ sub convert (%arg) {
             );
         };
     }
+
+    return $out_file;
 }
