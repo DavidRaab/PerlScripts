@@ -1,6 +1,5 @@
 #!/usr/bin/env perl
-use v5.32;
-use warnings;
+use v5.36;
 use FindBin;
 use lib "$FindBin::RealBin";
 use Color qw(red blue cyan);
@@ -10,13 +9,13 @@ use File::Copy::Recursive qw(fcopy pathmk);
 use List::Util qw(reduce);
 require SyncConfig;
 use Getopt::Long;
-no warnings 'experimental::signatures';
 
 # Todo:
 # * Include/Exclude in Config
 # * Regex Pattern Matching in File Config
 # * Copy Amount / Size Usage
 # * Term::ProgressBar
+# * invalid arguments error on invalid characters in target filesystem
 
 my $force = 0;
 GetOptions(
@@ -96,19 +95,19 @@ BEGIN {
     }
 
     package Synchronize;
+    use v5.36;
     use Moose;
-    use feature 'signatures';
     use Path::Class;
     use Types::Standard qw(Enum InstanceOf ArrayRef Str);
     use Type::Params qw(compile);
     use Moose::Util::TypeConstraints;
-    no warnings 'experimental::signatures';
 
     subtype 'SyncMethods', as Enum[qw/Flat Recursive/];
     subtype 'SyncFiles',   as ArrayRef[Str];
 
     has 'source'      => ( is => 'ro', required => 1, isa => 'Path::Class::Dir' );
     has 'destination' => ( is => 'ro', required => 1, isa => 'Path::Class::Dir' );
+    # Can either be "Flat", "Recursive" or "ArrayRef[Str]"
     has 'method'      => ( is => 'ro', required => 1, isa => 'SyncMethods | SyncFiles' );
 
     # returns full path of every file from a directory
@@ -275,4 +274,3 @@ BEGIN {
         });
     }
 }
-
