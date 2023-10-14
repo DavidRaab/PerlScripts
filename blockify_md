@@ -52,7 +52,7 @@ while ( $content !~ m/\G\z/gxmsc ) {
     }
     # newline and any other non-whitespace character
     elsif ( $content =~ m/\G \n(.) /gxmsc ) {
-        $fh->print($1);
+        $fh->print(" ", $1);
     }
     # newline and EOF
     elsif ( $content =~ m/\G \n\z /gxmsc ) {
