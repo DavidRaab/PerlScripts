@@ -1,21 +1,20 @@
 #!/usr/bin/env perl
 use v5.32;
 use warnings;
+use FindBin qw($RealBin);
+use Path::Tiny;
+
+# Get Template to Copy
+my $template = path($RealBin, 'mkperlsk.template');
+die "Error: mkperlsk.template cannot be found\n" if not $template->is_file;
 
 for my $file ( @ARGV ) {
-    next if -e $file;
-
-    open my $fh, '>', $file or die "Cannot open file [$file]: $!\n";
-
-    print {$fh} "#!/usr/bin/env perl\n";
-    print {$fh} "use v5.32;\n";
-    print {$fh} "use warnings;\n";
-    print {$fh} "use feature 'signatures';\n";
-    print {$fh} "no warnings 'experimental::signatures';\n";
-    print {$fh} "use open ':std', ':encoding(UTF-8)';\n";
-    print {$fh} "use Data::Printer;\n\n";
-
-    chmod 0770, $file;
-
-    close $fh;
+    if (-e $file) {
+        printf "WARNING: '%s' already exists. Skipping...\n", $file;
+        next;
+    }
+    
+    my $target = path($file);
+    $template->copy($target);
+    $target->chmod(0750);
 }
