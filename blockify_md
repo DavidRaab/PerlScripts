@@ -1,0 +1,65 @@
+#!/usr/bin/env perl
+use v5.32;
+use warnings;
+use feature 'signatures';
+no warnings 'experimental::signatures';
+#use open ':std', ':encoding(UTF-8)';
+use Data::Printer;
+use Getopt::Long::Descriptive;
+use Path::Tiny;
+use IO::File;
+
+my ($opt, $usage) = describe_options(
+    'Usage: blockify FILE',
+    ['file|f=s', 'File to blockify', {required => 1}],
+    ['force',    'Overwrites file, otherwise print result to STDOUT', {default => 0}],
+    ['help|h',   'Print this message', {shortcircuit => 1}],
+);
+
+print($usage->text) && exit if $opt->help;
+
+# Check if user provided an existing file
+my $file = path($opt->file);
+die(sprintf("Error: file '%s' does not exist.\n", $opt->file)) if not $file->exists;
+die(sprintf("Error: '%s' is not a file.\n", $opt->file))       if not $file->is_file;
+
+# read file into memory
+my $content = $file->slurp;
+
+# overwrite file
+my $fh =
+    $opt->force 
+    ? IO::File->new($file, 'w')
+    : IO::Handle->new_from_fd(fileno(STDOUT), 'w');
+
+# Go through file up to end
+while ( $content !~ m/\G\z/gxmsc ) {
+    # not newline characters
+    if ( $content =~ m/\G ([^\n]) /gxmsc ) {
+        $fh->print($1);
+    }
+    # multiple newlines
+    elsif ( $content =~ m/\G \n{2,} /gxmsc ) {
+        $fh->print("\n\n");
+    }
+    # newline followed by whitespace character
+    elsif ( $content =~ m/\G \n(\s) /gxmsc ) {
+        $fh->print("\n",$1);
+    }
+    # quotehandling of Markdown
+    elsif ( $content =~ m/\G \n > \s* /gxmsc ) {
+        $fh->print(" ");
+    }
+    # newline and any other non-whitespace character
+    elsif ( $content =~ m/\G \n(.) /gxmsc ) {
+        $fh->print($1);
+    }
+    # newline and EOF
+    elsif ( $content =~ m/\G \n\z /gxmsc ) {
+        $fh->print("\n");
+    }
+    # BOOM!
+    else {
+        die "Error: Some unexpected error happened. Parsing is not complete, code needs review!\n";
+    }
+}
