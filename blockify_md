@@ -32,29 +32,41 @@ my $fh =
     ? IO::File->new($file, 'w')
     : IO::Handle->new_from_fd(fileno(STDOUT), 'w');
 
-# Go through file up to end
+# Go through file up to end -- the order of the matching matters!
 while ( $content !~ m/\G\z/gxmsc ) {
-    # not newline characters
-    if ( $content =~ m/\G ([^\n]) /gxmsc ) {
+    # preserve 2 spaces followed by newline
+    if ( $content =~ m/\G( [ ][ ]\n )/gxmsc ) {
         $fh->print($1);
     }
-    # multiple newlines
+    # preserve any not newline characters
+    elsif ( $content =~ m/\G( [^\n] )/gxmsc ) {
+        $fh->print($1);
+    }
+    # squash multiple newlines into two newlines
     elsif ( $content =~ m/\G \n{2,} /gxmsc ) {
         $fh->print("\n\n");
     }
-    # newline followed by whitespace character
-    elsif ( $content =~ m/\G \n(\s) /gxmsc ) {
-        $fh->print("\n",$1);
+    # preserve enumerations
+    elsif ( $content =~ m/\G( \n \d+ \. )/gxmsc ) {
+        $fh->print($1);
     }
-    # quotehandling of Markdown
+    # preserve lists
+    elsif ( $content =~ m/\G( \n \s* [*] )/gxmsc ) {
+        $fh->print($1);
+    }
+    # preserve indented blocks
+    elsif ( $content =~ m/\G( \n[ \t] )/gxmsc ) {
+        $fh->print($1);
+    }
+    # multiline quotes into a single-line quote
     elsif ( $content =~ m/\G \n > \s* /gxmsc ) {
         $fh->print(" ");
     }
-    # newline and any other non-whitespace character
-    elsif ( $content =~ m/\G \n(.) /gxmsc ) {
-        $fh->print(" ", $1);
+    # remove newline when followed by non-whitespace character
+    elsif ( $content =~ m/\G \n (.)/gxmsc ) {
+        $fh->print($1);
     }
-    # newline and EOF
+    # match newline at EOF
     elsif ( $content =~ m/\G \n\z /gxmsc ) {
         $fh->print("\n");
     }
