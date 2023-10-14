@@ -1,0 +1,26 @@
+#!/usr/bin/env perl
+use v5.32;
+use warnings;
+use feature 'signatures';
+no warnings 'experimental::signatures';
+#use open ':std', ':encoding(UTF-8)';
+use Data::Printer;
+use Getopt::Long::Descriptive;
+
+my ($opt, $usage) = describe_options(
+    'Usage: pick_random [-n 10]',
+    ['n=i',    'Amount to show',     { default => 1 }],
+    ['help|h', 'Print this message', { shortcircuit => 1 }]
+);
+
+if ( $opt->help ) {
+    print $usage->text;
+    exit;
+}
+
+my @f=glob("*");
+my $a=@f;
+for my $x ( 1 .. $opt->n ) {
+    my $i = rand()*$a;
+    say $f[$i];
+}
