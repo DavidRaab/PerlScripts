@@ -62,9 +62,9 @@ while ( $content !~ m/\G\z/gxmsc ) {
     elsif ( $content =~ m/\G \n > \s* /gxmsc ) {
         $fh->print(" ");
     }
-    # remove newline when followed by non-whitespace character
+    # replace newline with space character when followed by non-whitespace character
     elsif ( $content =~ m/\G \n (.)/gxmsc ) {
-        $fh->print($1);
+        $fh->print(" ", $1);
     }
     # match newline at EOF
     elsif ( $content =~ m/\G \n\z /gxmsc ) {
