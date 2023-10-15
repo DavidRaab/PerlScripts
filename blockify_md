@@ -26,13 +26,13 @@ die(sprintf("Error: '%s' is not a file.\n", $opt->file))       if not $file->is_
 # read file into memory
 my $content = $file->slurp;
 
-# overwrite file
+# $fh is either the file to be overwritten, or otherwise by default STDOUT
 my $fh =
     $opt->force 
     ? IO::File->new($file, 'w')
     : IO::Handle->new_from_fd(fileno(STDOUT), 'w');
 
-# Go through file up to end -- the order of the matching matters!
+# Go through file content up to end -- the order of the matching matters!
 while ( $content !~ m/\G\z/gxmsc ) {
     # preserve 2 spaces followed by newline
     if ( $content =~ m/\G( [ ][ ]\n )/gxmsc ) {
@@ -54,8 +54,8 @@ while ( $content !~ m/\G\z/gxmsc ) {
     elsif ( $content =~ m/\G( \n \s* [*] )/gxmsc ) {
         $fh->print($1);
     }
-    # preserve indented blocks
-    elsif ( $content =~ m/\G( \n[ \t] )/gxmsc ) {
+    # preserve indented blocks -- by spaces or tab
+    elsif ( $content =~ m/\G( \n [ \t] )/gxmsc ) {
         $fh->print($1);
     }
     # multiline quotes into a single-line quote
@@ -75,3 +75,6 @@ while ( $content !~ m/\G\z/gxmsc ) {
         die "Error: Some unexpected error happened. Parsing is not complete, code needs review!\n";
     }
 }
+
+# Explicit close -- is done anyway but explicit is better, good behaviour
+$fh->close();
