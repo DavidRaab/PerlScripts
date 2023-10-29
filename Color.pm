@@ -1,8 +1,5 @@
 package Color;
-use v5.32;
-use warnings;
-use feature 'signatures';
-no warnings 'experimental::signatures';
+use v5.36;
 use Term::ANSIColor qw(colored);
 use Sub::Exporter -setup => {
     exports => [ qw(black red green yellow blue magenta cyan white) ],

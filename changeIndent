@@ -1,8 +1,5 @@
 #!/usr/bin/env perl
-use v5.32;
-use warnings;
-use feature 'signatures';
-no warnings 'experimental::signatures';
+use v5.36;
 use FindBin qw($Script);
 use Getopt::Long;
 

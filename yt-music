@@ -1,8 +1,5 @@
 #!/usr/bin/env perl
-use v5.32;
-use warnings;
-use feature 'signatures';
-no warnings 'experimental::signatures';
+use v5.36;
 use FindBin;
 use lib "$FindBin::RealBin";
 use Color qw(red cyan);

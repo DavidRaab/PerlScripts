@@ -1,15 +1,11 @@
 #!/usr/bin/env perl
-use v5.32;
-use warnings;
-use feature 'signatures';
-no warnings 'experimental::signatures';
+use v5.36;
 use open ':std', ':encoding(UTF-8)';
 use Data::Printer;
-
 use Getopt::Long::Descriptive;
 
 my ($opt, $usage) = describe_options(
-    'Usage: blockify FILE',
+    'Usage: program FILE',
     ['help|h', 'Print this message', {shortcircuit => 1}],
 );
 

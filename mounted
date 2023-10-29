@@ -1,6 +1,5 @@
 #!/usr/bin/env perl
-use v5.32;
-use warnings;
+use v5.36;
 use List::MoreUtils qw(any);
 use Text::Table;
 
