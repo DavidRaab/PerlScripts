@@ -43,3 +43,16 @@ if ( $pid ) {
 else {
     exec('evince', $output);
 }
+
+=pod
+
+=head1 TODO
+
+ * Opening on file with size creates empty file. empty pdf file by evince creates an error message.
+  - Suggestions to Fix?
+   - 1. abort on size error 0 -- annoying because i usually want to start a markdown file.
+   - 2. create from minimum Markdown Template instead. Weird behaviour, but it does exactly what i want.
+
+ * Another idea:
+  + also open gedit. Maybe a command that spawn gedit, evince and watches for file changes at once.
+  
