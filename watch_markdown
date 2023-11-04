@@ -1,0 +1,45 @@
+#!/usr/bin/env perl
+use v5.36;
+use open ':std', ':encoding(UTF-8)';
+use Data::Printer;
+use File::stat;
+use AnyEvent;
+
+my $file = $ARGV[0];
+die("File \"$file\" does not exists.\n") if not -e $file;
+
+# Build pandoc command to create pdf
+my $output     = $file =~ s/\.[^\.]+\z/.pdf/r;
+my @create_pdf = ('pandoc', $file, '-o', $output);
+
+# Create/Update PDF
+system(@create_pdf);
+
+# create a child process
+$SIG{CHLD} = 'IGNORE';
+defined(my $pid = fork()) || die "Cannot fork: !$\n";
+
+# Parent -- watches if file changes and when it does updates PDF
+if ( $pid ) {
+    my $wait       = AnyEvent->condvar;
+    my $last_mtime = stat($file)->mtime;
+
+    my $timer = AnyEvent->timer(
+        after    => 0,
+        interval => 0.5,
+        cb       => sub {
+            my $mtime = stat($file)->mtime;
+            if ( $mtime != $last_mtime ) {
+                $last_mtime = $mtime;
+                print("File changed. Generating PDF\n");
+                system(@create_pdf);
+            }
+        },
+    );
+
+    $wait->recv;
+}
+# Child -- spawns evince instance
+else {
+    exec('evince', $output);
+}
