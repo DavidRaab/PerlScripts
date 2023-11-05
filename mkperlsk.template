@@ -5,8 +5,8 @@ use Data::Printer;
 use Getopt::Long::Descriptive;
 
 my ($opt, $usage) = describe_options(
-    'Usage: program FILE',
+    'Usage: %c %o',
     ['help|h', 'Print this message', {shortcircuit => 1}],
 );
 
-print($usage->text) && exit if $opt->help;
+$usage->die if $opt->help;
