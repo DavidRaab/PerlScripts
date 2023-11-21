@@ -3,8 +3,8 @@ use v5.36;
 use open ':std', ':encoding(UTF-8)';
 use Data::Printer;
 use Getopt::Long::Descriptive;
-use List::Util qw/uniqstr/;
 use Path::Tiny;
+use Seq qw(fst snd);
 
 my ($opt, $usage) = describe_options(
     'Usage: search_command REGEX [--full]',
@@ -21,20 +21,30 @@ print($usage->text) && exit if not defined $ARGV[0];
 my $search = qr/$ARGV[0]/i;
 
 # Get all binaries in PATH that match passed Regex
-my @binaries =
-    sort { $a->[1] cmp $b->[1]                  } # Sort by basename
-    map  { [$_, $_->basename]                   } # Schwartzian Transformation
-    grep { $_->is_file && $_->stat->mode & 0111 } # only files and executables
-    map  { path($_)->children($search)          } # get children of every PATH that match $search regex
-        split /:/, $ENV{PATH};                    # split PATH on :
+my $binaries =
+    Seq
+    # split PATH on :
+    ->wrap(split /:/, $ENV{PATH})
+    # get children of every PATH that match $search regex  TODO: map_slurp???
+    ->bind(  sub($x) { Seq->wrap( path($x)->children($search) ) })
+    # only files and executables
+    ->filter(sub($x) { $x->is_file && $x->stat->mode & 0111 })
+    # Schwartzian Transformation
+    ->map(   sub($x) { [$x, $x->basename] })
+    # sort by basename
+    ->sort(sub($x,$y) { snd $x cmp snd $y });
 
 # prints full-path, usually useful when command exists multiple times
 if ( $opt->full ) {
-    say $_->[0] for @binaries;
+    $binaries->iter(sub($x) {
+        say fst $x;
+    });
 }
 # by default - only print basename of binaries (single-time)
 else {
-    say for uniqstr map { $_->[1] } @binaries;
+    $binaries->map(\&snd)->distinct->iter(sub($x) {
+        say $x;
+    });
 }
 
 =pod
