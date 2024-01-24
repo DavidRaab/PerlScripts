@@ -30,10 +30,11 @@ die (sprintf "Error: Split file [%s] does not exists.\n", $opt->split) if not -e
 $AnyEvent::Util::MAX_FORKS = $opt->parallel;
 
 
+my $time = qr/ (?: \d?\d:\d\d:\d\d | \d?\d:\d\d ) /xms;
 # 00:12:33 Artist - Title
-my $format1 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ ([^-]+) \s+ - \s+ (.+) \z/xms;
+my $format1 = qr/\A \[? ($time) \]? (?> \s+-\s+ | \s+ ) ([^-]+) \s+ - \s+ (.+) \z/xms;
 # 00:12:33 Title
-my $format2 = qr/\A \[? ( (?:\d\d:)? \d\d:\d\d) \]? (?:\s+-)? \s+ (.+) \z/xms;
+my $format2 = qr/\A \[? ($time) \]? (?> \s+-\s+ | \s+ ) (.+) \z/xms;
 
 # Read Songs File Format
 my @songs;
