@@ -22,7 +22,7 @@ sub sync ($destination) {
 *sd = sync("/media/david/A770-7A18");
 
 my @synchronize = (
-    d2("2020"), d2("2021"), d2("2022-1"), d2("2022-2"), d2("2023"), d2("2wei"), d2("8 Graves"),
+    d2("2022-1"), d2("2022-2"), d2("2023"), d2("2024"), d2("2wei"), d2("8 Graves"),
     d2("Adele"), d2("Apashe"), sd("Audiomachine"),
     d2("Best of Yiruma"),
     d2("Daft Punk"), d2("Dub Fx"),

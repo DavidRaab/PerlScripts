@@ -25,13 +25,6 @@ GetOptions(
 # All changes
 my @changes = map { $_->diff } SyncConfig::config();
 
-# get count of each operation
-my $amount = reduce {
-    $b->match(
-        COPY   => sub { $a->{Copies}++;    $a },
-        DELETE => sub { $a->{Deletions}++; $a },
-    );
-} {Copies => 0, Deletions => 0}, @changes;
 
 
 # split operations into copy/delete
@@ -44,12 +37,6 @@ my $ops = reduce {
 
 # Re-Order operations by Deletions first
 @changes = ( @{$ops->{Deletions}}, @{$ops->{Copies}} );
-
-
-# Start Program by Summary
-print  "Summary\n";
-printf "Copies:    %d\n",   $amount->{Copies};
-printf "Deletions: %d\n\n", $amount->{Deletions};
 
 for my $op ( @changes ) {
     $op->match(
@@ -67,6 +54,19 @@ for my $op ( @changes ) {
         },
     );
 }
+
+# get count of each operation
+my $amount = reduce {
+    $b->match(
+        COPY   => sub { $a->{Copies}++;    $a },
+        DELETE => sub { $a->{Deletions}++; $a },
+    );
+} {Copies => 0, Deletions => 0}, @changes;
+
+# print summary at end
+print  "\nSummary\n";
+printf "Copies:    %d\n", $amount->{Copies};
+printf "Deletions: %d\n", $amount->{Deletions};
 
 if ( not $force ) {
     print red("\nNo Copy/Delete has been done. Pass --force to do real work.\n");
