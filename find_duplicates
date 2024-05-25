@@ -1,0 +1,74 @@
+#!/usr/bin/env perl
+use v5.36;
+use open ':std', ':encoding(UTF-8)';
+use Path::Tiny;
+use Digest::SHA qw(sha512_hex);
+use Data::Printer;
+use Getopt::Long::Descriptive;
+
+my ($opt, $usage) = describe_options(
+    'Usage: %c %o',
+    ['help|h', 'Print this message', {shortcircuit => 1}],
+);
+
+$usage->die if $opt->help;
+
+# files grouped by file-size
+my $file = path('.')->visit(sub($path, $state) {
+    return if $path->is_dir;
+    push @{ $state->{$path->size}}, $path;
+}, { recurse => 1 });
+
+# delete all entries that only has one file per size
+for my $size ( keys %$file ) {
+    if ( @{$file->{$size}} <= 1 ) {
+        delete $file->{$size};
+    }
+}
+
+# go through file blocks and turn them into SHA512 => [file]
+for my $size ( keys %$file ) {
+    my %sha;
+    for my $file ( $file->{$size}->@* ) {
+        my $sha = sha512_hex(read4k($file));
+        push $sha{$sha}->@*, $file;
+    }
+    $file->{$size} = \%sha;
+}
+
+# delete all entries that only has one file per sha512
+for my $size ( keys %$file ) {
+    for my $sha ( keys $file->{$size}->%* ) {
+        if ( $file->{$size}{$sha}->@* <= 1 ) {
+            delete $file->{$size}{$sha};
+        }
+    }
+}
+
+# delete file sizes without any sha
+for my $size ( keys %$file ) {
+    if ( keys $file->{$size}->%* <= 0 ) {
+        delete $file->{$size};
+    }
+}
+
+print_potential_duplicates($file);
+
+# returns first 4 KiB of a file
+sub read4k($path) {
+    my $fh = $path->openr_raw;
+    read $fh, my $content, 4096;
+    return $content;
+}
+
+sub print_potential_duplicates($data) {
+    for my $size ( keys %$data ) {
+        for my $sha ( keys $data->{$size}->%* ) {
+            printf "SHA512 %s - %d bytes\n", $sha, $size;
+            for my $path ( $data->{$size}{$sha}->@* ) {
+                say $path;
+            }
+            print "\n";
+        }
+    }
+}
