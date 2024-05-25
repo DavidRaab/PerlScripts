@@ -16,15 +16,13 @@ $usage->die if $opt->help;
 # files grouped by file-size
 my $file = path('.')->visit(sub($path, $state) {
     return if $path->is_dir;
-    push @{ $state->{$path->size}}, $path;
+    push $state->{$path->size}->@*, $path;
 }, { recurse => 1 });
 
 # delete all entries that only has one file per size
-for my $size ( keys %$file ) {
-    if ( @{$file->{$size}} <= 1 ) {
-        delete $file->{$size};
-    }
-}
+hash_filter($file, sub($key, $value) {
+    return @$value > 1 ? 1 : 0;
+});
 
 # go through file blocks and turn them into SHA512 => [file]
 for my $size ( keys %$file ) {
@@ -36,23 +34,22 @@ for my $size ( keys %$file ) {
     $file->{$size} = \%sha;
 }
 
-# delete all entries that only has one file per sha512
+# only keep entries that has more than one file per sha512
 for my $size ( keys %$file ) {
-    for my $sha ( keys $file->{$size}->%* ) {
-        if ( $file->{$size}{$sha}->@* <= 1 ) {
-            delete $file->{$size}{$sha};
-        }
-    }
+    hash_filter($file->{$size}, sub($sha, $files) {
+        return @$files > 1 ? 1 : 0
+    });
 }
 
-# delete file sizes without any sha
-for my $size ( keys %$file ) {
-    if ( keys $file->{$size}->%* <= 0 ) {
-        delete $file->{$size};
-    }
-}
+# only keep file sizes that has some entries in it
+hash_filter($file, sub($size, $sha) {
+    return hash_count($sha) > 0 ? 1 : 0;
+});
 
 print_potential_duplicates($file);
+
+
+## Functions
 
 # returns first 4 KiB of a file
 sub read4k($path) {
@@ -61,8 +58,27 @@ sub read4k($path) {
     return $content;
 }
 
+# goes through a hash and calls a callback with $key, $value
+# when callback returns a falsish value it deletes the entry from hash
+sub hash_filter($hash, $predicate) {
+    while ( my ($key, $value) = each %$hash ) {
+        if ( $predicate->($key, $value) ) {
+            # if true - do nothing
+        }
+        else {
+            delete $hash->{$key};
+        }
+    }
+    return;
+}
+
+# returns the amount of entries in a hash
+sub hash_count($hash) {
+    return scalar keys %$hash;
+}
+
 sub print_potential_duplicates($data) {
-    for my $size ( keys %$data ) {
+    for my $size ( sort { $a <=> $b } keys %$data ) {
         for my $sha ( keys $data->{$size}->%* ) {
             printf "SHA512 %s - %d bytes\n", $sha, $size;
             for my $path ( $data->{$size}{$sha}->@* ) {
