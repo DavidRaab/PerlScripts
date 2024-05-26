@@ -5,30 +5,66 @@ use Path::Tiny;
 use Digest::SHA qw(sha512_hex);
 use Data::Printer;
 use Getopt::Long::Descriptive;
+use Sq;
+
+### Argument Parsing
 
 my ($opt, $usage) = describe_options(
     'Usage: %c %o',
-    ['help|h', 'Print this message', {shortcircuit => 1}],
+    ['min|m=s',    'Minimum file-size, like: 1, 1k, 1m, .3m, 1.5m'],
+    ['folder|f=s', 'De-Duplication folder'],
+    ['help|h',     'Print this message', {shortcircuit => 1}],
 );
 
 $usage->die if $opt->help;
 
+# check if folder exists and turn it into a Path::Tiny object
+my $dedup;
+if ( $opt->folder ) {
+    $dedup = path($opt->folder);
+    die "De-Duplication Folder does not exists.\n" if not $dedup->is_dir;
+}
+
+# read minimum
+my $min;
+if ( $opt->min ) {
+    my $num = qr/ \d+ | \.\d+ | \d+\.\d+ /xms;
+    if ( $opt->min =~ m/\A ($num) \s* \z/xms ) {
+        $min = $1;
+    }
+    elsif ( $opt->min =~ m/\A ($num) \s* ([km]) \s* \z/xmsi ) {
+        $min =
+            $2 eq 'k'
+            ? $1 * 1024
+            : $1 * 1024 * 1024;
+    }
+    else {
+        die "Unsupported minimum. Specify integer optionally followed by [km]\n";
+    }
+}
+
+### Finding Duplicates
+
 # files grouped by file-size
 my $file = path('.')->visit(sub($path, $state) {
+    # skip if directory
     return if $path->is_dir;
+    # skip if file is smaller than minimum
+    return if $min && $path->size < $min;
+
     push $state->{$path->size}->@*, $path;
 }, { recurse => 1 });
 
 # delete all entries that only has one file per size
-hash_filter($file, sub($key, $value) {
-    return @$value > 1 ? 1 : 0;
+hash_filter($file, sub($size, $files) {
+    return @$files > 1 ? 1 : 0;
 });
 
-# go through file blocks and turn them into SHA512 => [file]
+# go through file blocks and turn them into { SHA512 => [file] }
 for my $size ( keys %$file ) {
     my %sha;
     for my $file ( $file->{$size}->@* ) {
-        my $sha = sha512_hex(read4k($file));
+        my $sha = sha512_hex(read_bytes($file, 4096));
         push $sha{$sha}->@*, $file;
     }
     $file->{$size} = \%sha;
@@ -46,20 +82,28 @@ hash_filter($file, sub($size, $sha) {
     return hash_count($sha) > 0 ? 1 : 0;
 });
 
-print_potential_duplicates($file);
+
+### Action
+if ( $dedup ) {
+    do_dedup($file);
+}
+else {
+    print_potential_duplicates($file);
+}
 
 
 ## Functions
 
-# returns first 4 KiB of a file
-sub read4k($path) {
+# returns $count bytes of file, defaults to 4Kib (usually file-systems smallest unit)
+sub read_bytes($path, $count=4096) {
     my $fh = $path->openr_raw;
-    read $fh, my $content, 4096;
+    my $content;
+    read $fh, $content, $count;
     return $content;
 }
 
 # goes through a hash and calls a callback with $key, $value
-# when callback returns a falsish value it deletes the entry from hash
+# only keeps the hash entries where $predicate returns a true-ish value
 sub hash_filter($hash, $predicate) {
     while ( my ($key, $value) = each %$hash ) {
         if ( $predicate->($key, $value) ) {
@@ -81,10 +125,39 @@ sub print_potential_duplicates($data) {
     for my $size ( sort { $a <=> $b } keys %$data ) {
         for my $sha ( keys $data->{$size}->%* ) {
             printf "SHA512 %s - %d bytes\n", $sha, $size;
-            for my $path ( $data->{$size}{$sha}->@* ) {
-                say $path;
-            }
+            Array::iter($data->{$size}{$sha}, sub($file) {
+                say $file;
+            });
             print "\n";
         }
     }
+}
+
+sub do_dedup($data) {
+    for my $size ( sort { $a <=> $b } keys %$data ) {
+        for my $sha ( keys $data->{$size}->%* ) {
+            printf "File-Size: %d bytes\n", $size;
+            Array::iteri($data->{$size}{$sha}, sub($file, $idx) {
+                printf "%02d. %s\n", $idx+1, $file;
+            });
+
+            if ( ask("De-Duplicate? [yes/no*]") ) {
+
+                say "DEDUP";
+            }
+            else {
+                say "SKIP";
+            }
+        }
+    }
+}
+
+sub ask($message) {
+    $message =~ s/\s*$/ /xmsi;
+    print $message;
+    my $input = <STDIN>;
+    if ( $input =~ m/\A ( y | ye | yes ) $/xmsi ) {
+        return 1;
+    }
+    return;
 }
