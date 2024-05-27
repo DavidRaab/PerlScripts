@@ -47,30 +47,36 @@ if ( $opt->min ) {
 
 # files grouped by file-size
 my $file = path('.')->visit(sub($path, $state) {
-    # skip if directory
-    return if $path->is_dir;
-    # skip if file is smaller than minimum
+    # skip directories and links
+    return if -d $path || -l $path;
+    # skip if file is smaller than minimum (if specified)
     return if $min && $path->size < $min;
 
     push $state->{$path->size}->@*, $path;
 }, { recurse => 1 });
+
+# $file has the structure
+# { FILESIZE => [FILE] }
 
 # delete all entries that only has one file per size
 hash_filter($file, sub($size, $files) {
     return @$files > 1 ? 1 : 0;
 });
 
-# go through file blocks and turn them into { SHA512 => [file] }
-for my $size ( keys %$file ) {
+# go through [FILE] and turn them into { SHA512 => [FILE] }
+hash_each($file, sub($size, $files) {
     my %sha;
-    for my $file ( $file->{$size}->@* ) {
+    for my $file ( @$files ) {
         my $sha = sha512_hex(read_bytes($file, 4096));
         push $sha{$sha}->@*, $file;
     }
     $file->{$size} = \%sha;
-}
+});
 
-# only keep entries that has more than one file per sha512
+# $file now has the structure
+# { FILESIZE => { SHA512 => [FILE] } }
+
+# only keep entries that has more than one file per SHA512
 for my $size ( keys %$file ) {
     hash_filter($file->{$size}, sub($sha, $files) {
         return @$files > 1 ? 1 : 0
@@ -102,6 +108,18 @@ sub read_bytes($path, $count=4096) {
     return $content;
 }
 
+# goes through every key,value of a hash
+sub hash_each($hash, $action) {
+    while ( my ($key, $value) = each %$hash ) {
+        $action->($key, $value);
+    }
+}
+
+# returns the amount of entries in a hash
+sub hash_count($hash) {
+    return scalar keys %$hash;
+}
+
 # goes through a hash and calls a callback with $key, $value
 # only keeps the hash entries where $predicate returns a true-ish value
 sub hash_filter($hash, $predicate) {
@@ -116,9 +134,48 @@ sub hash_filter($hash, $predicate) {
     return;
 }
 
-# returns the amount of entries in a hash
-sub hash_count($hash) {
-    return scalar keys %$hash;
+sub ask($message) {
+    $message =~ s/\s*$/ /xmsi;
+    print $message;
+    my $input = <STDIN>;
+    if ( $input =~ m/\A ( y | ye | yes ) $/xmsi ) {
+        return 1;
+    }
+    return;
+}
+
+sub choose($message, $error, $validator) {
+    START:
+    print $message;
+    my $input = <STDIN>;
+    chomp $input;
+    my $result = $validator->($input);
+    if ( $result ) {
+        return $result;
+    }
+    else {
+        say $error;
+        goto START;
+    }
+}
+
+sub choose_range_or_string($message, $error, $min, $max) {
+    choose($message, $error, sub($input) {
+        # if integer provided
+        if ( $input =~ m/\A \s* (\d+) \s* \z/xms ) {
+            # check if in range
+            if ( $1 >= $min && $1 <= $max ) {
+                return [RANGE => $1];
+            }
+            else {
+                return;
+            }
+        }
+        # everything not an integer is accepted as-is
+        else {
+            return [STRING => $input];
+        }
+    });
 }
 
 sub print_potential_duplicates($data) {
@@ -133,31 +190,68 @@ sub print_potential_duplicates($data) {
     }
 }
 
+sub make_link($source, $destination) {
+    $source = $source->absolute;
+    my $cwd = Path::Tiny->cwd;
+
+    chdir($destination->parent)
+        or die "Cannot chdir: $!\n";
+    symlink($source->relative, $destination->basename)
+        or die "Cannot create symlink: $!\n";
+
+    chdir($cwd);
+}
+
 sub do_dedup($data) {
     for my $size ( sort { $a <=> $b } keys %$data ) {
-        for my $sha ( keys $data->{$size}->%* ) {
+        hash_each($data->{$size}, sub($sha, $files) {
+            # Adds blessing to $files
+            Array->from_array($files);
+
+            # prints duplicated files to user
             printf "File-Size: %d bytes\n", $size;
-            Array::iteri($data->{$size}{$sha}, sub($file, $idx) {
-                printf "%02d. %s\n", $idx+1, $file;
+            $files->iteri(sub($file, $idx) {
+                printf "  %02d. %s\n", $idx+1, $file;
             });
 
             if ( ask("De-Duplicate? [yes/no*]") ) {
+                # as all files should be duplicates, i always pick the first.
+                my $keep = $files->[0];
 
-                say "DEDUP";
-            }
-            else {
-                say "SKIP";
-            }
-        }
-    }
-}
+                # we ask the user which file to keep to pick the filename for the target
+                TARGET:
+                my $count = $files->count;
+                my $input = choose_range_or_string(
+                    (sprintf "Keep [1-%d/filename]: ", $count),
+                    (sprintf "Provide an integer in range 1-%d or a filename", $count),
+                    1,
+                    $count
+                );
 
-sub ask($message) {
-    $message =~ s/\s*$/ /xmsi;
-    print $message;
-    my $input = <STDIN>;
-    if ( $input =~ m/\A ( y | ye | yes ) $/xmsi ) {
-        return 1;
+                # Build target
+                my $target =
+                    $input->[0] eq 'RANGE'
+                    ? path($dedup, $files->[$input->[1] - 1]->basename)
+                    : path($dedup, $input->[1]);
+
+                # when target exists re-ask for another target
+                if ( -e $target ) {
+                    say 'Error: Target already exists';
+                    goto TARGET;
+                }
+
+                # Actual Copy Logic
+                # printf "COPY '%s' -> '%s'\n", $keep, $target;
+                if ( $keep->copy($target) ) {
+                    $files->iter(sub($file) {
+                        $file->remove;
+                        make_link($target, $file);
+                    });
+                }
+                else {
+                    die "Copy failed: $!\n";
+                }
+            }
+        });
     }
-    return;
 }
