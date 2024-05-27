@@ -25,7 +25,7 @@ use Sq;
 # user chooses "yes". Then the program ask for the filename it should keep.
 #
 # Then it will copy the first file to the given deduplucation folder and creates
-# symlinks from the old files to the new copied deduplicated folder.
+# symlinks from the old files to the new copied deduplicated file.
 
 ## TODO
 # + Extend Deduplication logic to full file, not just first 4 KiB
