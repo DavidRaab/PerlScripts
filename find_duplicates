@@ -7,6 +7,12 @@ use Data::Printer;
 use Getopt::Long::Descriptive;
 use Sq;
 
+## TODO
+# + When one of the duplicated file is already in the deduplication folder
+#   then this needs special care. Then we don't need to ask the user which
+#   filename should be keeped.
+# + Add some colors and newlines for interactive prompt
+
 ### Argument Parsing
 
 my ($opt, $usage) = describe_options(
