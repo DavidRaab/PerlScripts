@@ -7,7 +7,28 @@ use Data::Printer;
 use Getopt::Long::Descriptive;
 use Sq;
 
+## WHAT IT DOES
+#
+# This program recursively scans all files from the current working directory.
+# It gathers filesizes of all files. If there exists more than one file of the
+# same size the SHA512 is computed for its first 4 KiB of content.
+#
+# When this content is the same, file is considered a duplicate. This is not
+# exactly true, but yields into fast possible results. As file-size and first
+# 4 kiB must match.
+#
+# By default it just prints possible duplicated matches, and does nothing besides
+# that. So it is up to you to decide if those files are duplicates or not.
+#
+# If a deduplication folder is given, then the program turns into an interactive
+# application. It first asks if a given set of files should be deduplicated. If
+# user chooses "yes". Then the program ask for the filename it should keep.
+#
+# Then it will copy the first file to the given deduplucation folder and creates
+# symlinks from the old files to the new copied deduplicated folder.
+
 ## TODO
+# + Extend Deduplication logic to full file, not just first 4 KiB
 # + When one of the duplicated file is already in the deduplication folder
 #   then this needs special care. Then we don't need to ask the user which
 #   filename should be keeped.
