@@ -1,0 +1,19 @@
+#!/usr/bin/env perl
+use v5.36;
+use FindBin qw($RealBin);
+use Path::Tiny;
+
+# Get Template to Copy
+my $template = path($RealBin, 'mkraylib.template');
+die "Error: mkraylib.template cannot be found\n" if not $template->is_file;
+
+for my $file ( @ARGV ) {
+    if (-e $file) {
+        printf "WARNING: '%s' already exists. Skipping...\n", $file;
+        next;
+    }
+    
+    my $target = path($file);
+    $template->copy($target);
+    $target->chmod(0750);
+}
