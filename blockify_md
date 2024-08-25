@@ -7,7 +7,7 @@ use Path::Tiny;
 use IO::File;
 
 my ($opt, $usage) = describe_options(
-    'Usage: blockify FILE',
+    'Usage: blockify_md FILE',
     ['file|f=s', 'File to blockify', {required => 1}],
     ['force',    'Overwrites file, otherwise print result to STDOUT', {default => 0}],
     ['help|h',   'Print this message', {shortcircuit => 1}],
