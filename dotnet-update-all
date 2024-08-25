@@ -1,0 +1,40 @@
+#!/usr/bin/env perl
+use v5.36;
+use open ':std', ':encoding(UTF-8)';
+#use Data::Dumper;
+#use Getopt::Long::Descriptive;
+use IO::Handle;
+
+for my $tool ( get_tools() ) {
+    printf "Checking %s...\n", $tool->{name};
+    system(qw/dotnet tool update -g/, $tool->{name});
+}
+
+sub get_tools() {
+    open my $list, '-|', 'dotnet tool list -g'
+        or die "Failed spawning command dotnet: $!\n";
+
+    # discard first two line
+    $list->getline;
+    $list->getline;
+
+    my @tools;
+    for my $line ( $list->getlines ) {
+        chomp $line;
+        my @cols = split /\s+/, $line, 3;
+        push @tools, {
+            name     => $cols[0],
+            version  => $cols[1],
+            commands => trim($cols[2]),
+        };
+    }
+    close $list;
+
+    return wantarray ? @tools : \@tools;
+}
+
+sub trim($str) {
+    $str =~ s/\A\s*//;
+    $str =~ s/\s*\z//;
+    $str;
+}
