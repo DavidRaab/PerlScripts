@@ -3,9 +3,13 @@ use v5.36;
 
 for my $file ( @ARGV ) {
     next if -e $file;
+    if ( not ($file =~ m/\.fsx\z/) ) {
+        warn "dotnet fsi only works properly when file ends with .fsx. It then loads some magic.\n";
+    }
 
     open my $fh, '>', $file or die "Cannot open [$file]: $!\n";
     print {$fh} "#!/usr/bin/env -S dotnet fsi\n\n";
     chmod 0770, $file;
     close $fh;
 }
+
