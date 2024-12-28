@@ -181,18 +181,6 @@ sub print_potential_duplicates($data) {
     });
 }
 
-sub make_link($source, $destination) {
-    $source = $source->absolute;
-    my $cwd = Path::Tiny->cwd;
-
-    chdir($destination->parent)
-        or die "Cannot chdir: $!\n";
-    symlink($source->relative, $destination->basename)
-        or die "Cannot create symlink: $!\n";
-
-    chdir($cwd);
-}
-
 sub do_dedup($data) {
     for my $size ( sort { $a <=> $b } keys %$data ) {
         $data->{$size}->iter(sub($sha, $files) {
@@ -233,7 +221,7 @@ sub do_dedup($data) {
                 if ( $keep->copy($target) ) {
                     $files->iter(sub($file) {
                         $file->remove;
-                        make_link($target, $file);
+                        Sq->fs->make_link($target, $file);
                     });
                 }
                 else {
