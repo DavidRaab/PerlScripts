@@ -87,10 +87,15 @@ my $file =
     ->filter(sub($size, $files) { $files->length > 1 ? 1 : 0 })
     # go through all key,value
     ->map(sub($size, $files) {
-        # $files will be turned into hash { SHA512 => [FILE] }
-        return $size, $files->group_by(sub($file) {
-            sha512_hex(read_bytes($file, 4096))
-        });;
+        # $files will be turned into: { SHA512 => [FILE] }
+        return
+            $size,                         # key
+            $files->group_by(sub($file) {  # value
+                Sq->fs->read_bytes($file, 4096)->map(\&sha512_hex)->match(
+                    Ok  => sub($size) { return $size },
+                    Err => sub($msg)  { die $msg     },
+                );
+            });
     })
     # now: { FILESIZE => { SHA512 => [FILE] } }
     # go through all key,value
@@ -119,14 +124,6 @@ else {
 
 
 ## Functions
-
-# returns $count bytes of file, defaults to 4Kib (usually file-systems smallest unit)
-sub read_bytes($path, $count=4096) {
-    my $fh = $path->openr_raw;
-    my $content;
-    read $fh, $content, $count;
-    return $content;
-}
 
 sub ask($message) {
     $message =~ s/\s*$/ /xmsi;
