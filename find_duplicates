@@ -1,10 +1,11 @@
 #!/usr/bin/env perl
 use v5.36;
 use open ':std', ':encoding(UTF-8)';
+use Sq;
+use Sq::Sig;
 use Path::Tiny;
 use Digest::SHA qw(sha512_hex);
 use Getopt::Long::Descriptive;
-use Sq;
 
 ## WHAT IT DOES
 #
@@ -71,49 +72,41 @@ if ( $opt->min ) {
 
 ### Finding Duplicates
 
-# files grouped by file-size
-my $file = path('.')->visit(sub($path, $state) {
-    # skip directories and links
-    return if -d $path || -l $path;
-    # skip if file is smaller than minimum (if specified)
-    return if $min && $path->size < $min;
-
-    # When Hash::push is used. Then created array is also blessed in "Array" package
-    Hash::push($state, $path->size, $path);
-}, { recurse => 1 });
-
-# add Hash blessing to $file
-Hash->bless($file);
-
-# $file has the structure
-# { FILESIZE => [FILE] }
-
-# only keep those entries that has more than 1 file per size
-$file = $file->filter(sub($size, $files) {
-    return $files->length > 1 ? 1 : 0;
-});
-
-# go through [FILE] and turn them into { SHA512 => [FILE] }
-$file = $file->map(sub($size, $files) {
-    return $size, $files->group_by(sub($file) {
-        sha512_hex(read_bytes($file, 4096))
-    });;
-});
-
-# $file now has the structure
-# { FILESIZE => { SHA512 => [FILE] } }
-
-# only keep entries that has more than one file per SHA512
-$file = $file->map(sub($size, $sha) {
-    return $size, $sha->filter(sub($sha, $files) {
-        return @$files > 1 ? 1 : 0
+# Build a structure that only contain file-duplicates
+my $file =
+    Sq->io->recurse('.')
+    ->filter(call 'is_file')
+    # remove symbolic links
+    ->remove(sub($path) { -l $path })
+    # remove files smaller $min
+    ->remove(sub($path) { $min && $path->size < $min })
+    # build a hash with file-size as key
+    ->group_by(call 'size')
+    # now: { FILESIZE => [FILE] }
+    # only keep those hash entries that has more than 1 file per size
+    ->filter(sub($size, $files) { $files->length > 1 ? 1 : 0 })
+    # go through all key,value
+    ->map(sub($size, $files) {
+        # $files will be turned into hash { SHA512 => [FILE] }
+        return $size, $files->group_by(sub($file) {
+            sha512_hex(read_bytes($file, 4096))
+        });;
+    })
+    # now: { FILESIZE => { SHA512 => [FILE] } }
+    # go through all key,value
+    ->map(sub($size, $sha) {
+        # only keep entries that has more than one file per SHA512
+        return $size, $sha->filter(sub($sha, $files) {
+            return @$files > 1 ? 1 : 0
+        });
+    })
+    # only keep file sizes that has some entries in it
+    ->filter(sub($size, $sha) {
+        return $sha->length > 0 ? 1 : 0;
     });
-});
 
-# only keep file sizes that has some entries in it
-$file = $file->filter(sub($size, $sha) {
-    return $sha->length > 0 ? 1 : 0;
-});
+# remove comment to see structure
+# dumpw($file);
 
 
 ### Action
@@ -180,7 +173,7 @@ sub choose_range_or_string($message, $error, $min, $max) {
 }
 
 sub print_potential_duplicates($data) {
-    for my $size ( $data->keys->sort_num->expand ) {
+    $data->keys->sort(by_num)->iter(sub($size) {
         $data->{$size}->iter(sub($sha, $files) {
             printf "SHA512 %s - %d bytes\n", $sha, $size;
             $files->iter(sub($file) {
@@ -188,7 +181,7 @@ sub print_potential_duplicates($data) {
             });
             print "\n";
         });
-    };
+    });
 }
 
 sub make_link($source, $destination) {
