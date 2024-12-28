@@ -78,7 +78,7 @@ my $file =
     # remove symbolic links
     ->remove(sub($path) { -l $path })
     # remove files smaller $min
-    ->remove(sub($path) { $min && $path->size < $min })
+    ->remove(sub($path) { $path->size == 0 || ($min && $path->size < $min) })
     # build a hash with file-size as key
     ->group_by(call 'size')
     # now: { FILESIZE => [FILE] }
