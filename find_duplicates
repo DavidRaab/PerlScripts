@@ -2,6 +2,7 @@
 use v5.36;
 use open ':std', ':encoding(UTF-8)';
 use Sq;
+use Sq::Type qw(t_assert t_run t_valid type);
 use Sq::Sig;
 use Path::Tiny;
 use Digest::SHA qw(sha512_hex);
@@ -72,7 +73,17 @@ if ( $opt->min ) {
 
 ### Finding Duplicates
 
-# Build a structure that only contain file-duplicates
+# Type for what we want to built
+my $is_dup = type
+    [hash =>
+        [key_is => ['int']], # File-Size
+        [of     => [hash =>
+            [min    => 1],
+            [key_is => [match => qr/\A[0-9a-f]{128}\z/i]], # SHA512
+            [of     => [array =>
+                [of => [ref => 'Path::Tiny']]]]]]];
+
+# Build the above structure
 my $file =
     # recursively get all files from current folder as a Seq
     Sq->fs->recurse('.')
@@ -108,8 +119,8 @@ my $file =
                 #
                 # The group_by call groups all files by their SHA512
                 Sq->fs->read_bytes($file, 4096)->map(\&sha512_hex)->match(
-                    Ok  => sub($sha) { return $sha           },
-                    Err => sub($msg) { warn "$msg"; return 0 },
+                    Ok  => sub($sha) { return $sha             },
+                    Err => sub($msg) { warn "$msg"; return "0" },
                 );
             });
     })
@@ -125,6 +136,9 @@ my $file =
     })
     # only keep file sizes that has some entries in it
     ->filter(sub($size, $sha) { $sha->length > 0 ? 1 : 0 });
+
+# Abort when '$file' is wrong
+t_assert($is_dup, $file);
 
 # remove comment to see structure
 # dumpw($file);
@@ -180,45 +194,40 @@ sub ask($message) {
 # prints $message to console. It uses $validator to check if what user
 # provides is valid. When not, it prints $error and ask the user again
 # to choose something.
-sub choose($message, $error, $validator) {
+sub choose($message, $error, $type) {
     START:
     print $message;
     my $input = <STDIN>;
     chomp $input;
-    my $result = $validator->($input);
-    if ( $result ) {
-        return $result;
-    }
-    else {
-        say $error;
-        goto START;
-    }
+    return $input if t_valid($type, $input);
+    say $error;
+    goto START;
 }
 
 # ask a user to input a string or number. When number was provided
 # it must be in a certain range.
 sub choose_range_or_string($message, $error, $min, $max) {
-    choose($message, $error, sub($input) {
-        # if integer provided
-        if ( $input =~ m/\A \s* (\d+) \s* \z/xms ) {
-            # check if in range
-            if ( $1 >= $min && $1 <= $max ) {
-                return [RANGE => $1];
-            }
-            else {
-                return 0;
-            }
-        }
-        # everything not an integer is accepted as-is
-        else {
-            return [STRING => $input];
-        }
-    });
+    # HINT: What i really need here is to say. Either be a number, and then
+    #       it MUST check check against range. Or if not number, then it can
+    #       be any string. But currently when int-check fails. Then it will always
+    #       be a valid sring. So without not-match the type before didn't make
+    #       any sense. A better approach would be to deactive back-tracking
+    #       so the `or` check doesn't try alternatives when at least `int` succedded.
+    my $input = choose(
+        $message,
+        $error,
+        type [or =>
+                [int => [range => $min, $max]], # int in range
+                [str => [not   => ['int']]]]    # str, but not int
+    );
+    return [RANGE  => $input-1] if is_num $input;
+    return [STRING => $input  ];
 }
 
 # it expects the $files structure we built.
 # { FILESIZE => { SHA512 => [FILE] } }
 sub print_potential_duplicates($data) {
+    t_assert($is_dup);
     # we want to go through every key,value of the hash. But the key should
     # be iterated with a sorting. Here by_num because we want to print
     # everythhing ascending by the file-size. This is helpful as the output
@@ -238,6 +247,7 @@ sub print_potential_duplicates($data) {
 # it expects the $files structure we built.
 # { FILESIZE => { SHA512 => [FILE] } }
 sub do_dedup($data) {
+    t_assert($is_dup);
     $data->iter_sort(by_num, sub($size, $shas) {
         $shas->iter(sub($sha, $files) {
             # prints duplicated files to user
