@@ -1,8 +1,8 @@
 #!/usr/bin/env perl
-use v5.36;
-use open ':std', ':encoding(UTF-8)';
+use 5.036;
 use Sq;
 use Sq::Type qw(t_assert t_run t_valid type);
+use Sq::Parser qw(parser p_run);
 use Sq::Sig;
 use Path::Tiny;
 use Digest::SHA qw(sha512_hex);
@@ -32,7 +32,7 @@ use Getopt::Long::Descriptive;
 # + Extend Deduplication logic to full file, not just first 4 KiB
 # + When one of the duplicated file is already in the deduplication folder
 #   then this needs special care. Then we don't need to ask the user which
-#   filename should be keeped.
+#   file should be keeped.
 # + Add some colors and newlines for interactive prompt
 
 ### Argument Parsing
@@ -54,22 +54,28 @@ if ( $opt->folder ) {
 }
 
 # read minimum
-my $min;
-if ( $opt->min ) {
-    my $num = qr/ \d+ | \.\d+ | \d+\.\d+ /xms;
-    if ( $opt->min =~ m/\A ($num) \s* \z/xms ) {
-        $min = $1;
+my $min = assign {
+    if ( $opt->min ) {
+        my $num = parser
+            [map =>
+                sub {
+                    my ($num,$suffix) = @_;
+                    return $num               if !defined $suffix;
+                    return $num * 1024        if lc $suffix eq 'k';
+                    return $num * 1204 * 1204 if lc $suffix eq 'm';
+                },
+                [and =>
+                    [match => qr/\s* (\.\d+ | \d+ | \d+\.\d+) \s*/x],
+                    [maybe => [match => qr/([km]) \s* \z/xi]]]];
+
+        p_run($num, $opt->min)->match(
+            Some => sub($num) { fst $num },
+            None => sub()     {
+                die "Unsupported minimum. Specify integer optionally followed by [km]\n";
+            }
+        );
     }
-    elsif ( $opt->min =~ m/\A ($num) \s* ([km]) \s* \z/xmsi ) {
-        $min =
-            $2 eq 'k'
-            ? $1 * 1024
-            : $1 * 1024 * 1024;
-    }
-    else {
-        die "Unsupported minimum. Specify integer optionally followed by [km]\n";
-    }
-}
+};
 
 ### Finding Duplicates
 
