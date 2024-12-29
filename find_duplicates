@@ -74,26 +74,42 @@ if ( $opt->min ) {
 
 # Build a structure that only contain file-duplicates
 my $file =
+    # recursively get all files from current folder as a Seq
     Sq->fs->recurse('.')
+    # only files
     ->filter(call 'is_file')
     # remove symbolic links
     ->remove(sub($path) { -l $path })
-    # remove files smaller $min
+    # remove empty files or smaller $min (when provided)
     ->remove(sub($path) { $path->size == 0 || ($min && $path->size < $min) })
     # build a hash with file-size as key
     ->group_by(call 'size')
-    # now: { FILESIZE => [FILE] }
+    # structure now: { FILESIZE => [FILE] }
     # only keep those hash entries that has more than 1 file per size
-    ->filter(sub($size, $files) { $files->length > 1 ? 1 : 0 })
+    ->filter(sub($size, $files) { $files->length > 1 })
     # go through all key,value
+    # and function returns new key,value for every entry
     ->map(sub($size, $files) {
         # $files will be turned into: { SHA512 => [FILE] }
         return
-            $size,                         # key
-            $files->group_by(sub($file) {  # value
+            $size,                         # key stays the same
+            $files->group_by(sub($file) {  # value becomes a hash grouped by ...
+                # read_bytes returns an Result. Ok() when the content could
+                # be read, or on some failure an Err() containing an Errors
+                # message. So we must think at this place what we want todo
+                # when we get an Error. But before I do that. I map the
+                # content and calculate the SHA512 sum. This only happens
+                # when the content could be loaded. Then the `match`
+                # decides what todo.
+                #
+                # When i get an Err() case i just print a warning and I skip
+                # the file. I Skip it by returning just `0` for the SHA512
+                # sum. Later i just can delete that `0` entry.
+                #
+                # The group_by call groups all files by their SHA512
                 Sq->fs->read_bytes($file, 4096)->map(\&sha512_hex)->match(
-                    Ok  => sub($size) { return $size },
-                    Err => sub($msg)  { die $msg     },
+                    Ok  => sub($sha) { return $sha           },
+                    Err => sub($msg) { warn "$msg"; return 0 },
                 );
             });
     })
@@ -101,30 +117,56 @@ my $file =
     # go through all key,value
     ->map(sub($size, $sha) {
         # only keep entries that has more than one file per SHA512
-        return $size, $sha->filter(sub($sha, $files) {
-            return @$files > 1 ? 1 : 0
+        $size,
+        $sha->filter(sub($sha, $files) {
+            return 0 if $sha eq "0"; # skip the "0" entry completely
+            return 1 if @$files > 1; # only entries with more than one file
         });
     })
     # only keep file sizes that has some entries in it
-    ->filter(sub($size, $sha) {
-        return $sha->length > 0 ? 1 : 0;
-    });
+    ->filter(sub($size, $sha) { $sha->length > 0 ? 1 : 0 });
 
 # remove comment to see structure
 # dumpw($file);
 
+# EXAMPLE DUMP
+# {
+#   1195685 => {
+#     ed1e6790ff6681259dcff13fc2362ed55e51a173c22078d9c26b59d78a45e4ee0630b588f94af3b8003e1b738bc196aa98f6f7d3598cafc25c0753f87036192d => [
+#       path("P!nk/Greatest Hits... So Far!!!/cover.jpg"),
+#       path("P!nk/Greatest Hits... So Far!!!/Pink - Greatest Hits... So Far.jpg")
+#     ]
+#   },
+#   12251205 => {
+#     d72a0b29ff9dbcc686337dea8d53fe1a2524f9544e792e297b669475039192b311a260dc821be1a33695d8160cd67c423727c9b019dd22f8683692e1e5fffadd => [
+#       path("2020/Big Daddy Wilson - Walk A Mile In My Shoes.mp3"),
+#       path("Blues/Big Daddy Wilson - Walk A Mile In My Shoes.mp3")
+#     ]
+#   },
+#   143862741 => {
+#     7bede93ec60c4c5f130a7a673bd8dd128918cf7aa2a3af8d98ef7c3ff8e95868e32881a7eb09689587c781a85f9268315e38b8110d702fa2f343ef0510161c12 => [
+#       path("Blues/Alben/Instrumental Blues   A two hour long compilation.mp3"),
+#       path("Blues/Long Mix/Instrumental Blues.mp3")
+#     ]
+#   },
+# ......
+
 
 ### Action
+
+# when program was started to dedup files
 if ( $dedup ) {
     do_dedup($file);
 }
+# otherwise just print potential duplicates
 else {
     print_potential_duplicates($file);
 }
 
 
-## Functions
+### Functions for the interactive program
 
+# prints message to console and expects user to type "yes" otherwise returns 0
 sub ask($message) {
     $message =~ s/\s*$/ /xmsi;
     print $message;
@@ -132,9 +174,12 @@ sub ask($message) {
     if ( $input =~ m/\A ( y | ye | yes ) $/xmsi ) {
         return 1;
     }
-    return;
+    return 0;
 }
 
+# prints $message to console. It uses $validator to check if what user
+# provides is valid. When not, it prints $error and ask the user again
+# to choose something.
 sub choose($message, $error, $validator) {
     START:
     print $message;
@@ -150,6 +195,8 @@ sub choose($message, $error, $validator) {
     }
 }
 
+# ask a user to input a string or number. When number was provided
+# it must be in a certain range.
 sub choose_range_or_string($message, $error, $min, $max) {
     choose($message, $error, sub($input) {
         # if integer provided
@@ -159,7 +206,7 @@ sub choose_range_or_string($message, $error, $min, $max) {
                 return [RANGE => $1];
             }
             else {
-                return;
+                return 0;
             }
         }
         # everything not an integer is accepted as-is
@@ -169,21 +216,30 @@ sub choose_range_or_string($message, $error, $min, $max) {
     });
 }
 
+# it expects the $files structure we built.
+# { FILESIZE => { SHA512 => [FILE] } }
 sub print_potential_duplicates($data) {
-    $data->keys->sort(by_num)->iter(sub($size) {
-        $data->{$size}->iter(sub($sha, $files) {
+    # we want to go through every key,value of the hash. But the key should
+    # be iterated with a sorting. Here by_num because we want to print
+    # everythhing ascending by the file-size. This is helpful as the output
+    # becomes "stable". Calling the program multiple times always returns
+    # the same output in the same order. Otherwise the duplicates would
+    # be random.
+    $data->iter_sort(by_num, sub($size, $shas) {
+        # $shas is the inner hash: { SHA512 => [FILE] }
+        $shas->iter(sub($sha, $files) {
             printf "SHA512 %s - %d bytes\n", $sha, $size;
-            $files->iter(sub($file) {
-                say $file;
-            });
+            $files->iter(sub($file) { say $file });
             print "\n";
         });
     });
 }
 
+# it expects the $files structure we built.
+# { FILESIZE => { SHA512 => [FILE] } }
 sub do_dedup($data) {
-    for my $size ( sort { $a <=> $b } keys %$data ) {
-        $data->{$size}->iter(sub($sha, $files) {
+    $data->iter_sort(by_num, sub($size, $shas) {
+        $shas->iter(sub($sha, $files) {
             # prints duplicated files to user
             printf "File-Size: %d bytes\n", $size;
             $files->iteri(sub($file, $idx) {
@@ -229,5 +285,5 @@ sub do_dedup($data) {
                 }
             }
         });
-    }
+    });
 }
