@@ -5,5 +5,5 @@ use v5.36;
 for my $file ( @ARGV ) {
     my $orig = $file;
     my $new  = $file =~ s/\. [^\.]+ \z/.ogg/xr;
-    system('ffmpeg', '-i', $orig, '-q:a', 8, $new);
+    system('ffmpeg', '-vn', '-i', $orig, '-q:a', 8, $new);
 }
