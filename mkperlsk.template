@@ -6,7 +6,6 @@ use Sq;
 use Sq::Sig;
 use Sq::Type;
 use Sq::Test;
-use Benchmark qw(cmpthese);
 use Getopt::Long::Descriptive;
 
 my ($opt, $usage) = describe_options(
