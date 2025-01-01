@@ -1,10 +1,11 @@
 #!/usr/bin/env perl
-use v5.36;
+use 5.036;
+use utf8;
 use open ':std', ':encoding(UTF-8)';
-use Data::Printer;
 use Getopt::Long::Descriptive;
 use Path::Tiny;
-use Seq qw(fst snd);
+use Sq;
+use Sq::Sig;
 
 my ($opt, $usage) = describe_options(
     'Usage: search_command REGEX [--full]',
@@ -22,17 +23,16 @@ my $search = qr/$ARGV[0]/i;
 
 # Get all binaries in PATH that match passed Regex
 my $binaries =
-    Seq
-    # split PATH on :
-    ->wrap(split /:/, $ENV{PATH})
+    # split $ENV{PATH} on :
+    seq { split /:/, $ENV{PATH} }
     # get children of every PATH that match $search regex  TODO: map_slurp???
-    ->bind(  sub($x) { Seq->wrap( path($x)->children($search) ) })
+    ->bind(sub($x) { seq { path($x)->children($search)  } })
     # only files and executables
-    ->filter(sub($x) { $x->is_file && $x->stat->mode & 0111 })
+    ->keep(sub($x) { $x->is_file && $x->stat->mode & 0111 }) ## no critic
     # Schwartzian Transformation
-    ->map(   sub($x) { [$x, $x->basename] })
+    ->map( sub($x) { [$x, $x->basename] })
     # sort by basename
-    ->sort(sub($x,$y) { snd $x cmp snd $y });
+    ->sort(sub($x,$y) { $x->[1] cmp $y->[1] });
 
 # prints full-path, usually useful when command exists multiple times
 if ( $opt->full ) {
