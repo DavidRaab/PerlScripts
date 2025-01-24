@@ -1,9 +1,8 @@
 #!/usr/bin/env perl
 use 5.036;
-use Sq;
+use Sq -sig => 1;
 use Sq::Type qw(t_assert t_run t_valid type);
 use Sq::Parser qw(parser p_run);
-use Sq::Sig;
 use Path::Tiny;
 use Digest::SHA qw(sha512_hex);
 use Getopt::Long::Descriptive;
@@ -124,7 +123,7 @@ my $file =
                 # sum. Later i just can delete that `0` entry.
                 #
                 # The group_by call groups all files by their SHA512
-                Sq->fs->read_bytes($file, 4096)->map(\&sha512_hex)->match(
+                Sq->fs->read_bytes(4096, $file)->map(\&sha512_hex)->match(
                     Ok  => sub($sha) { return $sha             },
                     Err => sub($msg) { warn "$msg"; return "0" },
                 );
@@ -148,7 +147,7 @@ my $file =
 t_assert($is_dup, $file);
 
 # remove comment to see structure
-# dumpw($file);
+# dump($file);
 
 # EXAMPLE DUMP
 # {
