@@ -1,0 +1,9 @@
+#!/usr/bin/env perl
+use 5.036;
+use utf8;
+use open ':std', ':encoding(UTF-8)';
+use Sq -sig => 1;
+
+Sq->fs->recurse('.')->keep(call 'is_file')->rx(qr/$ARGV[0]/i)->iter(sub($file){
+    say $file;
+});
