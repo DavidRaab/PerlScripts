@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 use 5.036;
-use utf8;
-use open ':std', ':encoding(UTF-8)';
+# use utf8;
+# use open ':std', ':encoding(UTF-8)';
 use Sq -sig => 1;
 
 # I have this script in one of my folders. It usually contains 'mp4' files
@@ -17,12 +17,18 @@ my $files =
     ->children('.')
     ->keep(call 'is_file')
     ->map (call 'stringify')
-    ->group_by(sub($file) { $file =~ s/\. .*\z//r })
-    ->remove(  sub($k,$v) { $k eq ""              })
-    ->keep(    sub($k,$v) { $v->length > 1        });
-#dump($files);
+    ->group_by(sub($file) { $file =~ s/\. .*\z//rx })
+    ->remove(  sub($k,$v) { $k eq ""               })
+    ->keep(    sub($k,$v) { $v->length > 1         });
 
-print "Files with same name and different file-endings.\n";
-$files->iter_sort(by_str, sub($k,$v) {
-    say ' + ', $v->join(', ');
-});
+if ( $files->length > 0 ) {
+    print "Files with same name and different file-endings.\n";
+    $files->iter_sort(by_str, sub($k,$v) {
+        printf "= %d files\n", $v->length;
+        $v->iter(sub($file) { printf "+ %s\n", $file });
+        say "";
+    });
+}
+else {
+    print "No Files with same basename found.\n";
+}
