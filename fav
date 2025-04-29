@@ -1,0 +1,64 @@
+#!/usr/bin/env perl
+use 5.036;
+use utf8;
+use open ':std', ':encoding(UTF-8)';
+use Sq -sig => 1;
+use Path::Tiny qw(path);
+
+# This is the fav file where information are stored
+my $fav_file = '.sq.fav';
+
+# First we need to find the fav file/folder by going the directiory upwards until
+# we find the fav file, or not.
+my $fav = assign {
+    my $current = Path::Tiny->cwd->realpath;
+
+    CHECK:
+    if ( $current->child($fav_file)->is_file ) {
+        return Some($current);
+    }
+    elsif ( $current eq '/' ) {
+        return None;
+    }
+    else {
+        $current = $current->parent;
+        goto CHECK;
+    }
+};
+
+my $folder = $fav->match(
+    Some => sub($fav) {
+        # print "Found FAV: $fav\n";
+        # fav folder; currently hard-coded. In the future it is stored/read from the fav file
+        $fav->child('favorite');
+    },
+    None => sub {
+        warn "Fav file not found. Create '.sq.fav' in the root directory\n";
+        exit 1;
+    },
+);
+
+# dump($folder);
+
+# Create folder if not exists
+if ( not $folder->exists ) {
+    $folder->mkdir;
+}
+elsif ( not $folder->is_dir ) {
+    warn "Error: $folder is not a directory\n";
+    exit 1;
+}
+
+# creates symlinks for every file in the fav folder
+my $cwd = Path::Tiny->cwd;
+for my $file ( @ARGV ) {
+    my $target = $folder->child($file);
+    if ( $target->exists ) {
+        warn sprintf("fav '%s' already added to favorite.", $target);
+        next;
+    }
+    my $source = $cwd->child($file);
+    Sq->fs->make_link($source, $target);
+    printf "Added favorite: '$source'\n";
+}
+
