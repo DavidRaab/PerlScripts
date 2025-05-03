@@ -26,7 +26,7 @@ my $folder = Sq->fs->search_upwards('.sq.fav')->match(
 dump($folder) if $VERBOSE;
 
 # Create folder if not exists
-if ( not $folder->exists ) {
+if ( not -e $folder ) {
     $folder->mkdir;
 }
 elsif ( not $folder->is_dir ) {
