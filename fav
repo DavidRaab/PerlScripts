@@ -9,11 +9,10 @@ my $VERBOSE = 0;
 # This is the fav file where information are stored
 my $fav_file = '.sq.fav';
 
-# First we need to find the fav file/folder by going the directiory upwards until
-# we find the fav file, or not.
+# First we need to find the fav file
 my $folder = Sq->fs->search_upwards('.sq.fav')->match(
     Some => sub($fav) {
-        print "Found FAV: $fav\n" if $VERBOSE;
+        warn "Found FAV: $fav\n" if $VERBOSE;
         # fav folder; currently hard-coded. In the future it is stored/read from the fav file
         $fav->parent->child('favorite');
     },
