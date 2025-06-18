@@ -4,8 +4,7 @@ use utf8;
 use open ':std', ':encoding(UTF-8)';
 use Getopt::Long::Descriptive;
 use Path::Tiny;
-use Sq;
-use Sq::Sig;
+use Sq -sig => 1;
 
 my ($opt, $usage) = describe_options(
     'Usage: search_command REGEX [--full]',
@@ -24,9 +23,9 @@ my $search = qr/$ARGV[0]/i;
 # Get all binaries in PATH that match passed Regex
 my $binaries =
     # split $ENV{PATH} on :
-    seq { split /:/, $ENV{PATH} }
-    # get children of every PATH that match $search regex  TODO: map_slurp???
-    ->bind(sub($x) { seq { path($x)->children($search)  } })
+    Str->split(qr/:/, $ENV{PATH})->to_seq
+    # get children of every PATH that match $search regex
+    ->bind(sub($x) { seq { path($x)->children($search) } })
     # only files and executables
     ->keep(sub($x) { $x->is_file && $x->stat->mode & 0111 }) ## no critic
     # Schwartzian Transformation
