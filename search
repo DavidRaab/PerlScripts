@@ -3,7 +3,27 @@ use 5.036;
 use utf8;
 use open ':std', ':encoding(UTF-8)';
 use Sq -sig => 1;
+use Getopt::Long::Descriptive;
 
-Sq->fs->recurse('.')->keep(call 'is_file')->rx(qr/$ARGV[0]/i)->iter(sub($file){
+my ($opt, $usage) = describe_options(
+  'my-program %o <some-arg>',
+  ['folder|f', "only show folders"],
+  ['help',     "print usage message and exit", { shortcircuit => 1 }],
+);
+
+print($usage->text), exit if $opt->help;
+
+# only keep files that match a specific pattern
+my $files = Sq->fs->recurse('.')->keep(call 'is_file')->keep(sub($path) {
+    return $path->basename =~ qr/$ARGV[0]/i ? 1 : 0;
+});
+
+# when --folder is specified only show folders
+if ( $opt->folder ) {
+    $files = $files->map(call 'parent')->distinct;
+}
+
+# print files
+$files->iter(sub($file){
     say $file;
 });
