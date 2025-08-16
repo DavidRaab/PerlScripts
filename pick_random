@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 use v5.36;
 #use open ':std', ':encoding(UTF-8)';
-use Data::Printer;
+use Sq -sig => 1;
 use Getopt::Long::Descriptive;
 
 my ($opt, $usage) = describe_options(
@@ -15,9 +15,6 @@ if ( $opt->help ) {
     exit;
 }
 
-my @f=glob("*");
-my $a=@f;
-for my $x ( 1 .. $opt->n ) {
-    my $i = rand()*$a;
-    say $f[$i];
-}
+Sq->fs->recurse('.')->keep(call 'is_file')->to_array->shuffle->take($opt->n)->iter(sub($file) {
+    print $file, "\n";
+});
